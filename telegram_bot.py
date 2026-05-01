@@ -91,8 +91,10 @@ Start trading safely with SafeEscrowX! 💫
     keyboard = [
         [InlineKeyboardButton("🚀 Open SafeEscrowX App", web_app=WebAppInfo(url=MINI_APP_URL))],
         [InlineKeyboardButton("💬 Join Group Chat", url=GROUP_CHAT_LINK)],
-        [InlineKeyboardButton("📢 Main Channel", url=MAIN_CHANNEL_LINK),
-         InlineKeyboardButton("📚 Tutorials", url=TUTORIAL_CHANNEL_LINK)],
+        [
+            InlineKeyboardButton("📢 Main Channel", url=MAIN_CHANNEL_LINK),
+            InlineKeyboardButton("📚 Tutorials", url=TUTORIAL_CHANNEL_LINK)
+        ],
         [InlineKeyboardButton("🛟 Support", url=SUPPORT_BOT_LINK)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
