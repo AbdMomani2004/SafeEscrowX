@@ -1,6 +1,6 @@
 import os
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.error import BadRequest
 
@@ -89,7 +89,7 @@ Start trading safely with SafeEscrowX! 💫
     """
     
     keyboard = [
-        [InlineKeyboardButton("🚀 Open SafeEscrowX App", url=MINI_APP_URL)],
+        [InlineKeyboardButton("🚀 Open SafeEscrowX App", web_app=WebAppInfo(url=MINI_APP_URL))],
         [InlineKeyboardButton("💬 Join Group Chat", url=GROUP_CHAT_LINK)],
         [InlineKeyboardButton("📢 Main Channel", url=MAIN_CHANNEL_LINK),
          InlineKeyboardButton("📚 Tutorials", url=TUTORIAL_CHANNEL_LINK)],
@@ -114,12 +114,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         
         if is_subscribed:
             keyboard = [
-                [InlineKeyboardButton("🚀 Open SafeEscrowX App", url=MINI_APP_URL)]
+                [InlineKeyboardButton("🚀 Open SafeEscrowX App", web_app=WebAppInfo(url=MINI_APP_URL))]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             await query.edit_message_text(
-                text="✅ Subscription Verified!\n\nYou now have full access to SafeEscrowX bot. Use /start to begin!",
+                text="✅ Subscription Verified!\n\nYou now have full access to SafeEscrowX bot. Click below to open the app.",
                 reply_markup=reply_markup
             )
         else:
