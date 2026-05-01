@@ -21,6 +21,8 @@ TUTORIAL_CHANNEL = "@SafeEscrowXTutorials"
 TUTORIAL_CHANNEL_LINK = "https://t.me/SafeEscrowXTutorials"
 GROUP_CHAT_LINK = "https://t.me/SafeEscrowX_chat"
 SUPPORT_BOT = "@SafeEscrowXSupport_bot"
+SUPPORT_BOT_LINK = "https://t.me/SafeEscrowXSupport_bot"
+MINI_APP_URL = "https://safeescrowxx.netlify.app/"
 
 async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Check if user has joined both required channels."""
@@ -73,49 +75,33 @@ After joining both channels, click the button below to verify and access the bot
     welcome_message = f"""
 🌟 Welcome to SafeEscrowX, {user.first_name}! 🌟
 
-Your trusted escrow service for secure transactions!
+SafeEscrowX is an automated escrow bot built to make online transactions faster, safer, and easier.
 
-🚀 Features:
-• Secure cryptocurrency escrow
-• Protected peer-to-peer trades
-• Dispute resolution system
-• 24/7 automated service
+🚀 What you can do:
+• Start secure escrow trades
+• Protect buyer and seller
+• Reduce delays with automation
+• Access support when needed
 
-💬 Join Our Community:
-• Group Chat: SafeEscrowX Chat
-• Main Channel: @SafeEscrowX
-• Tutorials: @SafeEscrowXTutorials
-
-🛟 Need Help?
-Contact our support bot: {SUPPORT_BOT}
+Use the buttons below to open the app, join the community, or contact support.
 
 Start trading safely with SafeEscrowX! 💫
     """
     
     keyboard = [
-        [InlineKeyboardButton("🚀 Open SafeEscrowX App", url="https://safeescrowxx.netlify.app/")],
+        [InlineKeyboardButton("🚀 Open SafeEscrowX App", url=MINI_APP_URL)],
         [InlineKeyboardButton("💬 Join Group Chat", url=GROUP_CHAT_LINK)],
         [InlineKeyboardButton("📢 Main Channel", url=MAIN_CHANNEL_LINK),
          InlineKeyboardButton("📚 Tutorials", url=TUTORIAL_CHANNEL_LINK)],
-        [InlineKeyboardButton("🛟 Support", url="https://t.me/SafeEscrowXSupport_bot")]
+        [InlineKeyboardButton("🛟 Support", url=SUPPORT_BOT_LINK)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    image_url = "https://via.placeholder.com/400x200/4CAF50/FFFFFF?text=Welcome+to+SafeEscrowX"
-    
-    try:
-        await update.message.reply_photo(
-            photo=image_url,
-            caption=welcome_message,
-            reply_markup=reply_markup
-        )
-    except Exception as e:
-        logger.error(f"Error sending image: {e}")
-        await update.message.reply_text(
-            text=welcome_message,
-            reply_markup=reply_markup,
-            disable_web_page_preview=True
-        )
+    await update.message.reply_text(
+        text=welcome_message,
+        reply_markup=reply_markup,
+        disable_web_page_preview=True
+    )
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle button callbacks."""
@@ -128,7 +114,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         
         if is_subscribed:
             keyboard = [
-                [InlineKeyboardButton("🚀 Open SafeEscrowX App", url="https://safeescrowxx.netlify.app/")]
+                [InlineKeyboardButton("🚀 Open SafeEscrowX App", url=MINI_APP_URL)]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
