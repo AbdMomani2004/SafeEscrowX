@@ -1,0 +1,41 @@
+{
+  "name": "escrowx",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "node src/server.js",
+    "serve:postgres": "cross-env USE_POSTGRESQL=true node src/server.js",
+    "serve:production": "cross-env NODE_ENV=production node src/server.js",
+    "setup:postgres": "node src/setup-postgres.js",
+    "setup:production": "node src/setup-production.js",
+    "start": "cross-env NODE_ENV=production node src/server.js",
+    "test": "echo \"No tests specified\" && exit 0",
+    "lint": "echo \"No linting configured\" && exit 0"
+  },
+  "dependencies": {
+    "@google/genai": "latest",
+    "better-sqlite3": "^12.4.1",
+    "cloudinary": "^2.10.0",
+    "compression": "^1.8.1",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "helmet": "^7.2.0",
+    "multer": "^2.1.1",
+    "pg": "^8.16.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "socket.io": "^4.8.3",
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "cross-env": "^10.1.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}
