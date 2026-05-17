@@ -1,7 +1,7 @@
 import React, { createContext, useContext, ReactNode, useState, useEffect } from 'react';
 import { User, Service, Currency } from './types';
 import { mockUsers, adminUser } from './data';
-import { API_ENDPOINTS } from './config/api';
+import { API_ENDPOINTS, BACKEND_URL } from './config/api';
 
 // Fix for Telegram WebApp types not being available on window object.
 declare global {
@@ -34,6 +34,33 @@ const devUser: User = {
     ]
 };
 
+const localDemoUsers: User[] = [
+    {
+        id: 'demo-seller-1',
+        username: 'PixelForge',
+        avatarUrl: 'https://api.dicebear.com/8.x/initials/svg?seed=PixelForge',
+        rating: 4.9,
+        isVerified: true,
+        services: [
+            { id: 'demo-svc-1', title: 'UI/UX Mobile Design', description: 'High-converting mobile UI kit and full flow design.', price: 120, currency: Currency.USDT, approved: true },
+        ],
+    },
+    {
+        id: 'demo-seller-2',
+        username: 'ChainCraft',
+        avatarUrl: 'https://api.dicebear.com/8.x/initials/svg?seed=ChainCraft',
+        rating: 4.7,
+        isVerified: true,
+        services: [
+            { id: 'demo-svc-2', title: 'Smart Contract Review', description: 'Fast review of escrow and payment contract logic.', price: 180, currency: Currency.USDT, approved: true },
+        ],
+    },
+];
+
+const shouldUseLocalDemoUsers = (): boolean => {
+    return BACKEND_URL.includes('localhost') || BACKEND_URL.includes('127.0.0.1');
+};
+
 
 export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -61,7 +88,9 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const json = await resp.json();
             const directoryUsersRaw: any[] = Array.isArray(json.users) ? json.users : [];
             const directoryUsers: User[] = directoryUsersRaw.map(mapBackendUserToUser);
-            const uniqueUsers = [currentUser, adminUser, ...mockUsers, ...directoryUsers].reduce((acc, current) => {
+            const hasRealDirectorySellers = directoryUsers.some(u => u.id !== currentUser?.id && u.id !== 'admin');
+            const effectiveMockUsers = shouldUseLocalDemoUsers() && !hasRealDirectorySellers ? localDemoUsers : mockUsers;
+            const uniqueUsers = [currentUser, adminUser, ...effectiveMockUsers, ...directoryUsers].reduce((acc, current) => {
                 if (!current) return acc;
                 if (!acc.find(item => item.id === current.id)) {
                     acc.push(current);
@@ -201,7 +230,9 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     console.log('⚠️ Failed to fetch services directory:', svcErr);
                 }
 
-                const uniqueUsers = [user, adminUser, ...mockUsers, ...directoryUsers].reduce((acc, current) => {
+                const hasRealDirectorySellers = directoryUsers.some(u => u.id !== user.id && u.id !== 'admin');
+                const effectiveMockUsers = shouldUseLocalDemoUsers() && !hasRealDirectorySellers ? localDemoUsers : mockUsers;
+                const uniqueUsers = [user, adminUser, ...effectiveMockUsers, ...directoryUsers].reduce((acc, current) => {
                     const existing = acc.find(item => item.id === current.id);
                     if (!existing) {
                         const attachedServices = servicesByUserId[current.id] || current.services || [];
@@ -243,7 +274,8 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
             } catch (e) {
                 console.log('⚠️ Failed to fetch users directory:', e);
-                const uniqueUsersFallback = [user, adminUser, ...mockUsers].reduce((acc, current) => {
+                const effectiveMockUsers = shouldUseLocalDemoUsers() ? localDemoUsers : mockUsers;
+                const uniqueUsersFallback = [user, adminUser, ...effectiveMockUsers].reduce((acc, current) => {
                     if (!acc.find(item => item.id === current.id)) {
                         acc.push(current);
                     }

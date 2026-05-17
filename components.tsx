@@ -80,12 +80,12 @@ export const Header: React.FC<{
   const [panelOpen, setPanelOpen] = useState(false);
 
   return (
-    <div className="p-4 text-white flex items-center justify-between sticky top-0 bg-background/75 backdrop-blur-xl z-20 border-b border-border-color">
-        <h1 className="text-2xl font-bold">{title}</h1>
+    <div className="p-4 text-white flex items-center justify-between sticky top-0 bg-background/70 backdrop-blur-2xl z-20 border-b border-border-color/70 shadow-[0_8px_30px_rgba(0,0,0,0.24)]">
+        <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">{title}</h1>
          <div className="flex items-center space-x-2">
             {children}
             <div className="relative">
-                 <button onClick={() => setPanelOpen(!panelOpen)} className="bg-surface/85 border border-border-color p-3 rounded-full hover:bg-surface-alt transition-colors relative">
+                 <button onClick={() => setPanelOpen(!panelOpen)} className="bg-surface/85 border border-border-color/80 p-3 rounded-full hover:bg-surface-alt hover:border-primary/40 transition-all relative">
                     <ICONS.bell className="w-6 h-6 text-text-body"/>
                     {unreadCount > 0 && (
                         <span className="absolute -top-1 -right-1 bg-danger text-white text-xs w-5 h-5 rounded-full flex items-center justify-center border-2 border-background animate-ping once">
@@ -120,13 +120,13 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeView, setActiveView,
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 h-24 bg-surface/70 backdrop-blur-xl border-t border-border-color shadow-[0_-12px_30px_rgba(0,0,0,0.25)]">
+    <div className="fixed bottom-0 left-0 right-0 h-24 bg-surface/65 backdrop-blur-2xl border-t border-border-color/80 shadow-[0_-16px_34px_rgba(0,0,0,0.35)]">
       <div className="flex justify-around items-center h-full max-w-md mx-auto">
         {navItems.slice(0, 2).map(item => (
           <NavItem key={item.view} item={item} isActive={activeView === item.view} onClick={() => setActiveView(item.view)} />
         ))}
         
-        <button onClick={handleCreateNew} className="bg-gradient-primary text-white rounded-full p-4 shadow-glow-primary hover:scale-105 transition-transform duration-300 transform -translate-y-6">
+        <button onClick={handleCreateNew} className="bg-gradient-primary text-white rounded-full p-4 shadow-glow-primary hover:scale-105 hover:brightness-105 transition-all duration-300 transform -translate-y-6 border border-white/20">
           <ICONS.add className="w-8 h-8" />
         </button>
 
@@ -144,7 +144,7 @@ const NavItem: React.FC<{item: { view: View, icon: React.FC<any> }, isActive: bo
       onClick();
     }
     return (
-        <button onClick={handleClick} className={`flex flex-col items-center justify-center w-16 h-16 rounded-2xl transition-all duration-300 ${isActive ? 'bg-primary/15 border border-primary/30' : ''}`}>
+        <button onClick={handleClick} className={`flex flex-col items-center justify-center w-16 h-16 rounded-2xl transition-all duration-300 ${isActive ? 'bg-primary/20 border border-primary/40 shadow-[0_8px_20px_rgba(63,109,244,0.3)]' : 'hover:bg-surface-alt/70 border border-transparent'}`}>
           <div className={`relative transition-all duration-300 ${isActive ? 'text-primary scale-105' : 'text-text-body'}`}>
             <item.icon className="w-7 h-7" />
             {isActive && <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-2 h-2 bg-primary rounded-full"></div>}
@@ -184,13 +184,18 @@ interface CryptoIconProps {
 }
 
 export const CryptoIcon: React.FC<CryptoIconProps> = ({ currency, className = 'w-6 h-6' }) => {
-    const iconMap: Record<Currency, React.FC<any>> = {
-        [Currency.BTC]: ICONS.btc,
-        [Currency.USDT]: ICONS.usdt,
-        [Currency.LTC]: ICONS.ltc,
+    const tokenStyleMap: Record<Currency, { symbol: string; bg: string; text: string }> = {
+        [Currency.BTC]: { symbol: 'B', bg: 'from-amber-400 to-orange-500', text: 'text-white' },
+        [Currency.USDT]: { symbol: 'T', bg: 'from-emerald-400 to-teal-500', text: 'text-white' },
+        [Currency.LTC]: { symbol: 'L', bg: 'from-slate-300 to-slate-500', text: 'text-slate-900' },
     };
-    const IconComponent = iconMap[currency];
-    return <IconComponent className={className} />;
+    const tokenStyle = tokenStyleMap[currency];
+
+    return (
+      <span className={`inline-flex items-center justify-center rounded-full bg-gradient-to-br ${tokenStyle.bg} ${tokenStyle.text} font-black shadow-[0_6px_18px_rgba(0,0,0,0.35)] ring-1 ring-white/30 ${className}`}>
+        {tokenStyle.symbol}
+      </span>
+    );
 };
 
 
@@ -251,11 +256,11 @@ export const Modal: React.FC<{
   return (
     // Raise z-index to appear above full-screen create screen and headers
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
-      <div className="bg-surface rounded-2xl p-6 w-full max-w-sm border border-border-color">
+      <div className="bg-surface rounded-3xl p-6 w-full max-w-sm border border-border-color/80 shadow-[0_18px_40px_rgba(0,0,0,0.45)]">
         <h2 className="text-xl font-bold text-white mb-4">{title}</h2>
         <div className="text-text-body mb-6">{children}</div>
         <div className="flex space-x-3">
-          <button onClick={handleClose} className="flex-1 bg-surface-alt text-white font-bold py-3 rounded-xl hover:bg-gray-700/50 transition-colors">
+          <button onClick={handleClose} className="flex-1 bg-surface-alt text-white font-bold py-3 rounded-xl hover:bg-gray-700/50 border border-border-color/80 transition-all">
             {cancelText}
           </button>
           <button onClick={handleConfirm} className={`flex-1 text-white font-bold py-3 rounded-xl transition-all hover:brightness-110 ${confirmClass}`}>

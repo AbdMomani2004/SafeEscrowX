@@ -550,13 +550,16 @@ export const WelcomeScreen: React.FC<Pick<ScreenProps, 'setCurrentView'>> = ({ s
        <div className="absolute bottom-1/4 right-1/4 w-72 h-72 bg-purple-500/20 rounded-full filter blur-3xl animate-float animation-delay-3000"></div>
 
       <div className="w-full mt-16 z-10">
-        <h1 className="text-4xl font-bold">{APP_NAME}</h1>
-        <p className="text-text-body mt-2">{APP_TAGLINE}</p>
+        <div className="mx-auto w-20 h-20 rounded-3xl bg-gradient-to-br from-primary to-blue-300 flex items-center justify-center shadow-[0_18px_40px_rgba(63,109,244,0.45)] mb-5 ring-1 ring-white/30">
+            <span className="text-3xl font-black tracking-tight text-slate-950">Sx</span>
+        </div>
+        <h1 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">{APP_NAME}</h1>
+        <p className="text-text-body mt-2 max-w-xs mx-auto">{APP_TAGLINE}</p>
       </div>
 
       <div className="w-full z-10">
-        <div className="h-24 flex items-center justify-center">
-            <div className="transition-opacity duration-500 ease-in-out">
+        <div className="h-28 flex items-center justify-center">
+            <div className="transition-opacity duration-500 ease-in-out bg-surface/55 border border-border-color/80 backdrop-blur-sm rounded-2xl px-5 py-4 w-full max-w-sm">
                 <h2 className="text-2xl font-semibold">{slides[slide].title}</h2>
                 <p className="text-text-body mt-2">{slides[slide].description}</p>
             </div>
@@ -656,7 +659,7 @@ export const HomeScreen: React.FC<ScreenProps> = ({ setCurrentView, currentUser 
              <div className="space-y-3">
                 <h2 className="text-xl font-bold mb-3">Recent {isBuyerMode ? 'Orders' : 'Sales'}</h2>
                 {relevantTrades.length > 0 ? relevantTrades.slice(0, 3).map(trade => (
-                    <div key={trade.id} onClick={() => handleTradeClick(trade.id)} className="bg-surface p-4 rounded-2xl flex items-center justify-between cursor-pointer border border-border-color hover:border-primary transition-colors">
+                    <div key={trade.id} onClick={() => handleTradeClick(trade.id)} className="bg-surface/90 p-4 rounded-2xl flex items-center justify-between cursor-pointer border border-border-color/80 hover:border-primary/70 hover:shadow-[0_10px_24px_rgba(0,0,0,0.25)] transition-all">
                         <div className="flex items-center space-x-4">
                             <div className="bg-surface-alt p-3 rounded-full">
                                 <CryptoIcon currency={trade.currency} className="w-6 h-6 text-primary" />
@@ -689,6 +692,18 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
     const [deliveryTime, setDeliveryTime] = useState('');
     const [termsAgreed, setTermsAgreed] = useState(false);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+
+    const handleAmountChange = (value: string) => {
+        const normalized = value
+            .replace(/[^\d.]/g, '')
+            .replace(/(\..*)\./g, '$1');
+        setAmount(normalized);
+    };
+
+    const handleDeliveryTimeChange = (value: string) => {
+        const normalized = value.replace(/\D/g, '');
+        setDeliveryTime(normalized);
+    };
 
     // If seller tries to access this screen, redirect to profile
     if (mode === 'seller') {
@@ -784,7 +799,13 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
         <div className="fixed inset-0 bg-background z-50 p-4 flex flex-col text-white">
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold">New Escrow</h1>
-                <button onClick={() => setCreatingNew(false)} className="text-text-body p-2 rounded-full bg-surface hover:bg-surface-alt">
+                <button
+                    onClick={() => {
+                        sessionStorage.removeItem('escrowx-seller-picker');
+                        setCreatingNew(false);
+                    }}
+                    className="text-text-body p-2 rounded-full bg-surface border border-border-color/80 hover:bg-surface-alt transition-colors"
+                >
                     <ICONS.x className="w-6 h-6" />
                 </button>
             </div>
@@ -793,7 +814,7 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                 <div>
                     <label className="text-text-body mb-2 block font-medium">Seller</label>
                     {seller ? (
-                        <div className="bg-surface p-3 rounded-2xl flex items-center space-x-3 border border-border-color">
+                        <div className="bg-surface p-3 rounded-2xl flex items-center space-x-3 border border-border-color/80 shadow-[0_10px_24px_rgba(0,0,0,0.2)]">
                             <img src={seller.avatarUrl} alt="seller" className="w-10 h-10 rounded-full" />
                             <div>
                                 <p className="font-semibold">{seller.username}</p>
@@ -801,25 +822,33 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                             </div>
                         </div>
                     ) : (
-                        <div className="bg-surface p-3 rounded-2xl border border-border-color text-text-body flex items-center justify-between">
+                        <div className="bg-surface p-3 rounded-2xl border border-border-color/80 text-text-body flex items-center justify-between">
                             <span>No seller selected.</span>
-                            <button onClick={() => setCurrentView('explore')} className="bg-primary/20 text-primary font-bold py-1 px-3 rounded-lg text-sm border border-primary/50 hover:bg-primary/30">Choose Seller</button>
+                            <button
+                                onClick={() => {
+                                    sessionStorage.setItem('escrowx-seller-picker', '1');
+                                    setCurrentView('explore');
+                                }}
+                                className="bg-primary/20 text-primary font-bold py-1 px-3 rounded-lg text-sm border border-primary/50 hover:bg-primary/30"
+                            >
+                                Choose Seller
+                            </button>
                         </div>
                     )}
                 </div>
 
                 <div>
                     <label className="text-text-body mb-2 block font-medium">Item/Service Description</label>
-                    <textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-surface p-3 rounded-2xl focus:ring-2 focus:ring-primary focus:outline-none border border-border-color" rows={3} placeholder="e.g. Custom Logo Design"></textarea>
+                    <textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-surface p-3 rounded-2xl focus:ring-2 focus:ring-primary focus:outline-none border border-border-color/80" rows={3} placeholder="e.g. Custom logo design package"></textarea>
                 </div>
 
                  <div>
                     <label className="text-text-body mb-2 block font-medium">Amount</label>
                     <div className="flex space-x-2">
-                        <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className="w-full bg-surface p-3 rounded-2xl focus:ring-2 focus:ring-primary focus:outline-none border border-border-color" />
-                        <div className="bg-surface rounded-2xl p-1 flex space-x-1 border border-border-color">
+                        <input type="text" inputMode="decimal" value={amount} onChange={e => handleAmountChange(e.target.value)} placeholder="0.00" className="w-full bg-surface p-3 rounded-2xl focus:ring-2 focus:ring-primary focus:outline-none border border-border-color/80" />
+                        <div className="bg-surface rounded-2xl p-1 flex space-x-1 border border-border-color/80">
                             {Object.values(Currency).map(c => (
-                                <button key={c} onClick={() => setCurrency(c)} className={`p-2 rounded-xl transition-colors ${currency === c ? 'bg-primary' : ''}`}>
+                                <button key={c} onClick={() => setCurrency(c)} className={`p-2 rounded-xl transition-all ${currency === c ? 'bg-primary shadow-[0_8px_18px_rgba(63,109,244,0.45)]' : 'hover:bg-surface-alt'}`}>
                                     <CryptoIcon currency={c} className="w-6 h-6"/>
                                 </button>
                             ))}
@@ -828,10 +857,10 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                 </div>
                  <div>
                     <label className="text-text-body mb-2 block font-medium">Delivery Time (days)</label>
-                    <input type="number" value={deliveryTime} onChange={e => setDeliveryTime(e.target.value)} placeholder="e.g. 3" className="w-full bg-surface p-3 rounded-2xl focus:ring-2 focus:ring-primary focus:outline-none border border-border-color" />
+                    <input type="text" inputMode="numeric" value={deliveryTime} onChange={e => handleDeliveryTimeChange(e.target.value)} placeholder="e.g. 3" className="w-full bg-surface p-3 rounded-2xl focus:ring-2 focus:ring-primary focus:outline-none border border-border-color/80" />
                 </div>
 
-                <div className="bg-surface border border-border-color rounded-2xl p-4 space-y-2">
+                <div className="bg-surface border border-border-color/80 rounded-2xl p-4 space-y-2 shadow-[0_10px_24px_rgba(0,0,0,0.2)]">
                     <div className="text-text-body text-sm flex justify-between">
                         <span>Fee ({(parseFloat(amount) || 0) < 100 ? '$1 under $100' : '1% above $100'})</span>
                         <span>{fee.toFixed(4)} {currency}</span>
@@ -1509,7 +1538,7 @@ const ServiceCard: React.FC<{ service: Service; user: User; onClick: () => void 
     );
 };
 
-export const ExploreScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'setSelectedUserId' | 'currentUser'>> = ({ setCurrentView, setSelectedUserId, currentUser }) => {
+export const ExploreScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'setSelectedUserId' | 'setCreatingNew' | 'currentUser'>> = ({ setCurrentView, setSelectedUserId, setCreatingNew, currentUser }) => {
     const { allUsers } = useUsers();
     const { mode } = useMode();
     const [searchQuery, setSearchQuery] = useState('');
@@ -1549,7 +1578,14 @@ export const ExploreScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'setSe
     }, [allServices, searchQuery]);
 
     const handleUserClick = (userId: string) => {
+        const isSellerPicker = sessionStorage.getItem('escrowx-seller-picker') === '1';
         setSelectedUserId(userId);
+        if (isSellerPicker) {
+            sessionStorage.removeItem('escrowx-seller-picker');
+            setCreatingNew(true);
+            setCurrentView('createEscrow', null, userId);
+            return;
+        }
         setCurrentView('userProfile', null, userId);
     };
 
@@ -1680,7 +1716,7 @@ const ServiceFormModal: React.FC<{
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-            <div className="bg-surface rounded-2xl p-6 w-full max-w-sm border border-border-color" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-surface rounded-3xl p-6 w-full max-w-sm border border-border-color/80 shadow-[0_18px_45px_rgba(0,0,0,0.45)]" onClick={(e) => e.stopPropagation()}>
                 <h2 className="text-xl font-bold text-white mb-6">{service ? 'Edit Service' : 'Add New Service'}</h2>
                 <div className="space-y-4">
                     <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Service Title" className="w-full bg-background p-3 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none border border-border-color" />
@@ -1777,7 +1813,7 @@ const WithdrawFundsModal: React.FC<{
             <div className="bg-surface rounded-2xl p-6 w-full max-w-sm border border-border-color" onClick={(e) => e.stopPropagation()}>
                 <h2 className="text-xl font-bold text-white mb-4">Withdraw Funds</h2>
                 
-                <div className="bg-background p-3 rounded-lg border border-border-color mb-4">
+                <div className="bg-background/80 p-4 rounded-xl border border-border-color/80 mb-4">
                     <h3 className="text-sm text-text-body font-medium mb-2">Your Balances</h3>
                     {Object.keys(balances).length > 0 ? (
                         <div className="space-y-1">
@@ -1799,10 +1835,10 @@ const WithdrawFundsModal: React.FC<{
                 <div className="space-y-4">
                      <div>
                         <div className="flex space-x-2">
-                            <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Amount" className="w-full bg-background p-3 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none border border-border-color" />
-                            <div className="bg-background rounded-lg p-1 flex space-x-1 border border-border-color">
+                            <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Amount" className="w-full bg-background p-3 rounded-xl focus:ring-2 focus:ring-primary focus:outline-none border border-border-color/80" />
+                            <div className="bg-background rounded-xl p-1 flex space-x-1 border border-border-color/80">
                                 {Object.values(Currency).map(c => (
-                                    <button key={c} onClick={() => setCurrency(c)} className={`p-2 rounded-md transition-colors ${currency === c ? 'bg-primary' : ''}`}>
+                                    <button key={c} onClick={() => setCurrency(c)} className={`p-2 rounded-lg transition-all ${currency === c ? 'bg-primary shadow-[0_8px_18px_rgba(63,109,244,0.45)]' : 'hover:bg-surface-alt'}`}>
                                         <CryptoIcon currency={c} className="w-5 h-5"/>
                                     </button>
                                 ))}
@@ -1817,7 +1853,7 @@ const WithdrawFundsModal: React.FC<{
                         <select
                             value={network}
                             onChange={e => setNetwork(e.target.value)}
-                            className="w-full bg-background p-3 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none border border-border-color"
+                            className="w-full bg-background p-3 rounded-xl focus:ring-2 focus:ring-primary focus:outline-none border border-border-color/80"
                         >
                             {NETWORKS_BY_CURRENCY[currency].map(n => (
                                 <option key={n} value={n}>{n}</option>
@@ -1825,8 +1861,8 @@ const WithdrawFundsModal: React.FC<{
                         </select>
                         <p className="text-xs text-amber-300 mt-2">{NETWORK_WARNING}</p>
                     </div>
-                    <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder="Destination Address" className="w-full bg-background p-3 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none border border-border-color" />
-                    <div className="bg-background/60 border border-border-color rounded-lg p-3 text-sm text-text-body">
+                    <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder="Destination Address" className="w-full bg-background p-3 rounded-xl focus:ring-2 focus:ring-primary focus:outline-none border border-border-color/80" />
+                    <div className="bg-background/60 border border-border-color/80 rounded-xl p-3 text-sm text-text-body">
                         <div className="flex justify-between">
                             <span>Withdrawal Fee</span>
                             <span>${WITHDRAWAL_FEE_USD.toFixed(2)}</span>
@@ -1841,8 +1877,8 @@ const WithdrawFundsModal: React.FC<{
                 {error && <p className="text-danger text-sm mt-3 text-center">{error}</p>}
                 
                 <div className="flex space-x-3 mt-6">
-                    <button onClick={onClose} className="flex-1 bg-surface-alt text-white font-bold py-3 rounded-xl hover:bg-gray-700/50 transition-colors">Cancel</button>
-                    <button onClick={handleSubmit} disabled={Object.keys(balances).length === 0} className="flex-1 text-white font-bold py-3 rounded-xl transition-all hover:brightness-110 bg-gradient-primary disabled:bg-gray-600 disabled:opacity-50 disabled:shadow-none">Submit Withdrawal</button>
+                    <button onClick={onClose} className="flex-1 bg-surface-alt text-white font-bold py-3 rounded-xl hover:bg-gray-700/50 border border-border-color/80 transition-all">Cancel</button>
+                    <button onClick={handleSubmit} disabled={Object.keys(balances).length === 0} className="flex-1 text-white font-bold py-3 rounded-xl transition-all hover:brightness-110 bg-gradient-primary shadow-glow-primary disabled:bg-gray-600 disabled:opacity-50 disabled:shadow-none">Submit Withdrawal</button>
                 </div>
             </div>
         </div>

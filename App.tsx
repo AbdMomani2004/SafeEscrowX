@@ -29,6 +29,7 @@ declare global {
 export type View = 'welcome' | 'home' | 'chats' | 'explore' | 'profile' | 'createEscrow' | 'deposit' | 'tradeRoom' | 'disputeRoom' | 'userProfile' | 'search';
 
 const App: React.FC = () => {
+  const SELLER_PICKER_FLAG = 'escrowx-seller-picker';
   const [currentView, setCurrentView] = useState<View>('welcome');
   const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -49,10 +50,11 @@ const App: React.FC = () => {
   }
   
   const navigateTo = (view: View, tradeId: string | null = null, userId: string | null = null) => {
+    const inSellerPicker = view === 'explore' && sessionStorage.getItem(SELLER_PICKER_FLAG) === '1';
     setCurrentView(view);
     setSelectedTradeId(tradeId);
     setSelectedUserId(userId);
-    if(view !== 'createEscrow' && view !== 'deposit') {
+    if(view !== 'createEscrow' && view !== 'deposit' && !inSellerPicker) {
         setCreatingNew(false);
     }
      if (view !== 'createEscrow') {
@@ -71,11 +73,12 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    const inSellerPicker = currentView === 'explore' && sessionStorage.getItem(SELLER_PICKER_FLAG) === '1';
     // Only navigate to the create screen if we are in "creating" mode
     // AND we are not already on a screen that's part of that flow.
     // AND we are in buyer mode (sellers cannot create escrows)
     // This prevents a navigation loop when moving from CreateEscrowScreen to DepositScreen.
-    if (isCreatingNew && currentView !== 'createEscrow' && currentView !== 'deposit' && mode === 'buyer') {
+    if (isCreatingNew && currentView !== 'createEscrow' && currentView !== 'deposit' && !inSellerPicker && mode === 'buyer') {
       navigateTo('createEscrow', null, selectedUserId);
     } 
     // This handles the user clicking the "close" button on the create screen.
