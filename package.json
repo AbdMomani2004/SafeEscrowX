@@ -1,0 +1,40 @@
+{
+  "name": "escrowx-frontend",
+  "version": "1.0.0",
+  "description": "SafeEscrowX Frontend React Application",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "echo \"No linting configured\" && exit 0",
+    "type-check": "tsc --noEmit",
+    "build:prod": "npm run type-check && npm run build"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.10",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^5.0.0",
+    "terser": "^5.44.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "escrow",
+    "crypto",
+    "telegram",
+    "react",
+    "frontend"
+  ],
+  "author": "SafeEscrowX Team",
+  "license": "MIT"
+}
