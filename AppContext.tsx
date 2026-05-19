@@ -161,7 +161,7 @@ export const TradesProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         id: `m${Date.now()}`,
         senderId: 'system',
         type: MessageType.SYSTEM,
-        content: `Escrow created by ${tradeData.buyer.username}. Waiting for deposit.`,
+        content: `Escrow created by ${tradeData.buyer.username}. Buyer can pay anytime to activate escrow protection.`,
         timestamp: new Date(),
       }],
       status: EscrowStatus.CREATED,

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { adminUser } from './data';
 import { Currency, EscrowStatus, Message, MessageType, Trade, User, Review, Service } from './types';
 import { ICONS, APP_NAME, APP_TAGLINE } from './constants';
-import { StatusBadge, CryptoIcon, CountdownTimer, Modal, Header } from './components';
+import { StatusBadge, CryptoIcon, CountdownTimer, Modal, Header, Avatar } from './components';
 import { useTrades, useNotifications } from './AppContext';
 import { useUsers } from './UserContext';
 import { useMode } from './ModeContext';
@@ -16,9 +16,10 @@ declare global {
 }
 
 const tg = window.Telegram?.WebApp;
-const MIN_DEPOSIT_USD = 5;
+const MIN_DEPOSIT_USD = 1;
 const MIN_WITHDRAWAL_USD = 5;
 const WITHDRAWAL_FEE_USD = 1;
+const MAX_TRADE_USD = 2500;
 const NETWORK_WARNING = 'Wrong network selection may result in permanent loss of funds. Please make sure before proceeding.';
 
 const getDepositFee = (amount: number): number => {
@@ -170,7 +171,7 @@ const BuyerProfile: React.FC<{
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <div className="font-bold text-primary">{trade.amount} {trade.currency}</div>
+                                    <div className="font-bold text-primary">${trade.amount.toFixed(2)} • {trade.currency}</div>
                                 </div>
                             </div>
                         </div>
@@ -194,7 +195,7 @@ const BuyerProfile: React.FC<{
                     {givenReviews.slice(0, 3).map(({ review, trade }) => (
                         <div key={`${review.timestamp.getTime()}-${trade.id}`} className="bg-surface p-4 rounded-2xl border border-border-color">
                             <div className="flex items-start gap-3">
-                                <img src={trade.seller.avatarUrl} alt="seller" className="w-10 h-10 rounded-full" />
+                                <Avatar src={trade.seller.avatarUrl} name={trade.seller.username} className="w-10 h-10" />
                                 <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-1">
                                         <span className="font-semibold">{trade.seller.username}</span>
@@ -369,7 +370,7 @@ const SellerProfile: React.FC<{
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <div className="font-bold text-primary">{trade.amount} {trade.currency}</div>
+                                    <div className="font-bold text-primary">${trade.amount.toFixed(2)} • {trade.currency}</div>
                                 </div>
                             </div>
                         </div>
@@ -393,7 +394,7 @@ const SellerProfile: React.FC<{
                     {receivedReviews.slice(0, 3).map(({ review, trade }) => (
                         <div key={`${review.timestamp.getTime()}-${trade.id}`} className="bg-surface p-4 rounded-2xl border border-border-color">
                             <div className="flex items-start gap-3">
-                                <img src={trade.buyer.avatarUrl} alt="buyer" className="w-10 h-10 rounded-full" />
+                                <Avatar src={trade.buyer.avatarUrl} name={trade.buyer.username} className="w-10 h-10" />
                                 <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-1">
                                         <span className="font-semibold">{trade.buyer.username}</span>
@@ -450,7 +451,7 @@ const ReviewCard: React.FC<{ review: Review; reviewer: User | undefined; trade: 
     return (
         <div className="bg-surface/90 p-4 rounded-2xl border border-border-color glass-card surface-hover">
             <div className="flex items-start space-x-3">
-                <img src={reviewer.avatarUrl} alt="reviewer" className="w-10 h-10 rounded-full" />
+                <Avatar src={reviewer.avatarUrl} name={reviewer.username} className="w-10 h-10" />
                 <div className="flex-1">
                     <div className="flex justify-between items-center">
                         <div>
@@ -610,7 +611,7 @@ export const HomeScreen: React.FC<ScreenProps> = ({ setCurrentView, currentUser 
     return (
         <div className="p-4 text-white">
             <div className="flex items-center space-x-3 mb-8">
-                <img src={currentUser.avatarUrl} alt="avatar" className="w-14 h-14 rounded-full border-2 border-primary" />
+                <Avatar src={currentUser.avatarUrl} name={currentUser.username} className="w-14 h-14 border-2 border-primary" />
                 <div>
                     <h1 className="text-2xl font-bold">👋 Hi {currentUser.username}!</h1>
                     <p className="text-text-body">You are in {isBuyerMode ? 'Buyer' : 'Seller'} mode.</p>
@@ -666,7 +667,7 @@ export const HomeScreen: React.FC<ScreenProps> = ({ setCurrentView, currentUser 
                             </div>
                             <div>
                                 <p className="font-semibold">{trade.description}</p>
-                                <p className="text-sm text-text-body">{trade.amount} {trade.currency}</p>
+                                <p className="text-sm text-text-body">${trade.amount.toFixed(2)} • {trade.currency}</p>
                             </div>
                         </div>
                         <StatusBadge status={trade.status} />
@@ -747,6 +748,11 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
             alert(`Minimum deposit is $${MIN_DEPOSIT_USD}.`);
             return;
         }
+        if (numericAmount > MAX_TRADE_USD) {
+            tg?.HapticFeedback.notificationOccurred('error');
+            alert(`Maximum trade amount is $${MAX_TRADE_USD}.`);
+            return;
+        }
         // If seller is not selected, guide the user immediately
         if (!seller) {
             alert('Please choose a seller before creating an escrow.');
@@ -774,7 +780,8 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
         });
         setIsConfirmModalOpen(false);
         tg?.HapticFeedback.notificationOccurred('success');
-        setCurrentView('deposit', newTrade.id);
+        // Open chat immediately; buyer can pay later from trade room.
+        setCurrentView('tradeRoom', newTrade.id);
     };
 
     return (
@@ -791,7 +798,7 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                     You are about to create an escrow with
                     <span className="font-bold text-white"> {seller ? seller.username : 'selected seller'}</span>.
                 </p>
-                <p>Amount: <span className="font-bold text-white">{amount} {currency}</span></p>
+                <p>Amount: <span className="font-bold text-white">${Number(amount || 0).toFixed(2)} (pay with {currency})</span></p>
                 <p>Description: <span className="font-bold text-white">{description}</span></p>
                 <p className="pt-2">Please confirm the details are correct before proceeding.</p>
             </div>
@@ -815,7 +822,7 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                     <label className="text-text-body mb-2 block font-medium">Seller</label>
                     {seller ? (
                         <div className="bg-surface p-3 rounded-2xl flex items-center space-x-3 border border-border-color/80 shadow-[0_10px_24px_rgba(0,0,0,0.2)]">
-                            <img src={seller.avatarUrl} alt="seller" className="w-10 h-10 rounded-full" />
+                            <Avatar src={seller.avatarUrl} name={seller.username} className="w-10 h-10" />
                             <div>
                                 <p className="font-semibold">{seller.username}</p>
                                 <span className="text-sm text-text-body">@{seller.username}</span>
@@ -843,9 +850,9 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                 </div>
 
                  <div>
-                    <label className="text-text-body mb-2 block font-medium">Amount</label>
+                    <label className="text-text-body mb-2 block font-medium">Trade Amount (USD)</label>
                     <div className="flex space-x-2">
-                        <input type="text" inputMode="decimal" value={amount} onChange={e => handleAmountChange(e.target.value)} placeholder="0.00" className="w-full bg-surface p-3 rounded-2xl focus:ring-2 focus:ring-primary focus:outline-none border border-border-color/80" />
+                        <input type="text" inputMode="decimal" value={amount} onChange={e => handleAmountChange(e.target.value)} placeholder="e.g. 50.00" className="w-full bg-surface p-3 rounded-2xl focus:ring-2 focus:ring-primary focus:outline-none border border-border-color/80" />
                         <div className="bg-surface rounded-2xl p-1 flex space-x-1 border border-border-color/80">
                             {Object.values(Currency).map(c => (
                                 <button key={c} onClick={() => setCurrency(c)} className={`p-2 rounded-xl transition-all ${currency === c ? 'bg-primary shadow-[0_8px_18px_rgba(63,109,244,0.45)]' : 'hover:bg-surface-alt'}`}>
@@ -863,12 +870,15 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                 <div className="bg-surface border border-border-color/80 rounded-2xl p-4 space-y-2 shadow-[0_10px_24px_rgba(0,0,0,0.2)]">
                     <div className="text-text-body text-sm flex justify-between">
                         <span>Fee ({(parseFloat(amount) || 0) < 100 ? '$1 under $100' : '1% above $100'})</span>
-                        <span>{fee.toFixed(4)} {currency}</span>
+                        <span>${fee.toFixed(2)}</span>
                     </div>
                      <div className="text-text-body text-sm flex justify-between font-bold">
-                        <span>You will deposit</span>
-                        <span className="text-white">{total.toFixed(4)} {currency}</span>
+                        <span>Total charge (USD)</span>
+                        <span className="text-white">${total.toFixed(2)}</span>
                     </div>
+                    <p className="text-xs text-text-body">
+                        Buyer can choose payment currency in chat. Amount will be converted using live market price.
+                    </p>
                 </div>
 
                 <div className="flex items-center space-x-3 pt-2">
@@ -898,6 +908,11 @@ export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showT
     };
     
     const [addresses, setAddresses] = useState<Record<Currency, string>>(defaultAddresses);
+    const [usdRates, setUsdRates] = useState<Record<Currency, number>>({
+        [Currency.USDT]: 1,
+        [Currency.BTC]: 0,
+        [Currency.LTC]: 0
+    });
     
     useEffect(() => {
         const savedAddresses = localStorage.getItem('paymentAddresses');
@@ -913,6 +928,23 @@ export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showT
                 console.error('Failed to load payment addresses:', e);
             }
         }
+    }, []);
+
+    useEffect(() => {
+        const loadRates = async () => {
+            try {
+                const resp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,litecoin,tether&vs_currencies=usd');
+                const json = await resp.json();
+                setUsdRates({
+                    [Currency.USDT]: Number(json?.tether?.usd) || 1,
+                    [Currency.BTC]: Number(json?.bitcoin?.usd) || 0,
+                    [Currency.LTC]: Number(json?.litecoin?.usd) || 0
+                });
+            } catch (error) {
+                // keep defaults; user can still copy address and pay manually
+            }
+        };
+        loadRates();
     }, []);
 
     useEffect(() => {
@@ -958,7 +990,7 @@ export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showT
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     address: addresses[trade.currency],
-                    amount: total,
+                    amount: totalInCurrency,
                     currency: trade.currency,
                     txHash: txHash.trim()
                 })
@@ -994,13 +1026,22 @@ export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showT
     if (!trade) return <div className="p-4 text-white">Trade not found.</div>;
 
     const fee = getDepositFee(trade.amount);
-    const total = trade.amount + fee;
+    const totalUsd = trade.amount + fee;
+    const selectedRate = usdRates[trade.currency] || 0;
+    const totalInCurrency = trade.currency === Currency.USDT ? totalUsd : (selectedRate > 0 ? totalUsd / selectedRate : 0);
+    const networkByCurrency: Record<Currency, string> = {
+        [Currency.USDT]: 'TRC20',
+        [Currency.BTC]: 'BTC',
+        [Currency.LTC]: 'LTC'
+    };
     const address = addresses[trade.currency];
 
     return (
         <div className="p-4 text-white text-center flex flex-col h-full">
-            <h1 className="text-2xl font-bold mt-4">Deposit Funds to Start</h1>
-            <p className="text-text-body mb-2">Send exactly {total.toFixed(4)} {trade.currency} to the address below.</p>
+            <h1 className="text-2xl font-bold mt-4">Deposit Funds</h1>
+            <p className="text-text-body mb-2">
+                Send exactly <span className="font-semibold text-white">{totalInCurrency.toFixed(8)} {trade.currency}</span> (≈ ${totalUsd.toFixed(2)}) to the address below.
+            </p>
             <p className="text-xs text-text-body mb-6">
                 Fee: {trade.amount < 100 ? '$1 under $100' : '1% above $100'}
             </p>
@@ -1009,7 +1050,8 @@ export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showT
                 <div className="bg-white p-2 rounded-lg">
                     <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${address}`} alt="QR Code" className="rounded-lg"/>
                 </div>
-                <p className="text-lg font-bold mt-4">{total.toFixed(4)} {trade.currency}</p>
+                <p className="text-lg font-bold mt-4">{totalInCurrency.toFixed(8)} {trade.currency}</p>
+                <p className="text-sm text-amber-300 mt-1">Network: {networkByCurrency[trade.currency]}</p>
                 <div className="bg-background w-full p-3 rounded-lg flex items-center justify-between mt-4 border border-border-color">
                     <span className="text-sm font-mono truncate mr-2">{address}</span>
                     <button onClick={handleCopy} className="text-primary hover:text-primary-hover"><ICONS.copy className="w-5 h-5"/></button>
@@ -1047,7 +1089,7 @@ export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showT
                         {verificationStatus === 'failed' && (
                             <div className="bg-red-500/20 border border-red-500/30 rounded-xl p-3">
                                 <p className="text-red-300 text-sm text-center">
-                                    {verificationMessage || `Payment not found. Please ensure you've sent exactly ${total.toFixed(4)} ${trade.currency} to the address above.`}
+                                    {verificationMessage || `Payment not found. Please ensure you've sent exactly ${totalInCurrency.toFixed(8)} ${trade.currency} on ${networkByCurrency[trade.currency]}.`}
                                 </p>
                             </div>
                         )}
@@ -1066,7 +1108,7 @@ export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showT
 };
 
 export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selectedTradeId, currentUser, showToast }) => {
-    const { trades, isLoading, addMessage, updateTradeStatus } = useTrades();
+    const { trades, isLoading, addMessage, updateTradeStatus, loadMessages } = useTrades();
     const { addNotification } = useNotifications();
     const trade = trades.find(t => t.id === selectedTradeId);
     const [message, setMessage] = useState('');
@@ -1074,7 +1116,9 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [submittedReview, setSubmittedReview] = useState(false);
+    const [liveMessages, setLiveMessages] = useState<Message[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const seenIncomingRef = useRef<Set<string>>(new Set());
 
      useEffect(() => {
         const handleBack = () => setCurrentView('chats');
@@ -1090,13 +1134,47 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
         };
     }, [setCurrentView]);
 
+    useEffect(() => {
+        if (!trade) return;
+        setLiveMessages(trade.messages || []);
+    }, [trade?.id]);
+
+    const otherParty = trade ? (trade.buyer.id === currentUser.id ? trade.seller : trade.buyer) : null;
+
+    useEffect(() => {
+        if (!trade || !otherParty) return;
+        let mounted = true;
+
+        const syncMessages = async () => {
+            const serverMessages = await loadMessages(trade.id);
+            if (!mounted || !serverMessages.length) return;
+            setLiveMessages(serverMessages);
+            if (seenIncomingRef.current.size === 0) {
+                serverMessages.forEach((msg) => seenIncomingRef.current.add(msg.id));
+                return;
+            }
+            for (const msg of serverMessages) {
+                if (msg.senderId === currentUser.id || msg.senderId === 'system') continue;
+                if (seenIncomingRef.current.has(msg.id)) continue;
+                seenIncomingRef.current.add(msg.id);
+                addNotification(trade.id, `New message from ${otherParty.username}`);
+            }
+        };
+
+        syncMessages();
+        const timer = setInterval(syncMessages, 3000);
+        return () => {
+            mounted = false;
+            clearInterval(timer);
+        };
+    }, [trade?.id, otherParty?.id, currentUser.id, loadMessages, addNotification]);
+
     const filteredMessages = useMemo(() => {
-        if (!trade) return [];
-        if (!searchQuery.trim()) return trade.messages;
-        return trade.messages.filter(msg =>
+        if (!searchQuery.trim()) return liveMessages;
+        return liveMessages.filter(msg =>
             msg.content.toLowerCase().includes(searchQuery.toLowerCase())
         );
-    }, [trade?.messages, searchQuery]);
+    }, [liveMessages, searchQuery]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1112,6 +1190,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
             timestamp: new Date(),
         };
         addMessage(trade.id, newMessage);
+        setLiveMessages(prev => [...prev, newMessage]);
         setMessage('');
         tg?.HapticFeedback.impactOccurred('light');
     };
@@ -1181,7 +1260,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
         return <div className="p-4 text-white">Trade not found. <button onClick={() => setCurrentView('home')}>Go Home</button></div>;
     }
 
-    const otherParty = trade.buyer.id === currentUser.id ? trade.seller : trade.buyer;
+    const resolvedOtherParty = trade.buyer.id === currentUser.id ? trade.seller : trade.buyer;
     const isBuyer = trade.buyer.id === currentUser.id;
 
     const hasBuyerReviewed = !!trade.buyerReview;
@@ -1250,10 +1329,10 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                     <>
                         <div className="flex items-center space-x-3">
                             {/* Back button is handled by native TG button */}
-                            <img src={otherParty.avatarUrl} alt="avatar" className="w-10 h-10 rounded-full cursor-pointer" onClick={() => setCurrentView('userProfile', null, otherParty.id)} />
+                            <Avatar src={resolvedOtherParty.avatarUrl} name={resolvedOtherParty.username} className="w-10 h-10" onClick={() => setCurrentView('userProfile', null, resolvedOtherParty.id)} />
                             <div>
-                                <p className="font-bold">{otherParty.username}</p>
-                                <p className="text-xs text-text-body">{trade.amount} {trade.currency}</p>
+                                <p className="font-bold">{resolvedOtherParty.username}</p>
+                                <p className="text-xs text-text-body">${trade.amount.toFixed(2)} • pay via {trade.currency}</p>
                             </div>
                         </div>
                         <div className="flex items-center space-x-2">
@@ -1273,6 +1352,17 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                     <ICONS.clock className="w-4 h-4"/>
                         <span>Waiting for seller to deliver work</span>
                     </div>
+                </div>
+            )}
+
+            {trade.status === EscrowStatus.CREATED && (
+                <div className="bg-purple-900/50 p-3 text-purple-200 flex items-center justify-between gap-2">
+                    <span className="text-sm">{isBuyer ? 'Trade created. You can pay anytime to activate escrow protection.' : 'Trade created. Waiting for buyer payment.'}</span>
+                    {isBuyer && (
+                        <button onClick={() => setCurrentView('deposit', trade.id)} className="shrink-0 bg-gradient-primary text-white text-xs px-3 py-2 rounded-xl font-semibold">
+                            Pay Now
+                        </button>
+                    )}
                 </div>
             )}
             
@@ -1333,15 +1423,15 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                     
                     {myReview && (
                         <div className="mb-4">
-                            <h4 className="font-semibold text-text-body mb-2">Your review for {otherParty.username}</h4>
+                            <h4 className="font-semibold text-text-body mb-2">Your review for {resolvedOtherParty.username}</h4>
                             <ReviewCard review={myReview} reviewer={currentUser} trade={trade} onViewTrade={() => {}} />
                         </div>
                     )}
 
                     {otherPartyReview && (
                         <div className="mb-4">
-                            <h4 className="font-semibold text-text-body mb-2">Review from {otherParty.username}</h4>
-                            <ReviewCard review={otherPartyReview} reviewer={otherParty} trade={trade} onViewTrade={() => {}} />
+                            <h4 className="font-semibold text-text-body mb-2">Review from {resolvedOtherParty.username}</h4>
+                            <ReviewCard review={otherPartyReview} reviewer={resolvedOtherParty} trade={trade} onViewTrade={() => {}} />
                         </div>
                     )}
                     
@@ -1488,7 +1578,7 @@ export const ChatsScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'setSele
                     return (
                         <div key={trade.id} onClick={() => handleTradeClick(trade.id)} className="bg-surface p-3 rounded-2xl flex items-center justify-between cursor-pointer border border-border-color hover:border-primary transition-colors">
                              <div className="flex items-center space-x-3">
-                                <img src={otherParty.avatarUrl} alt="avatar" className="w-12 h-12 rounded-full cursor-pointer" onClick={(e) => { e.stopPropagation(); handleUserClick(otherParty.id); }} />
+                                <Avatar src={otherParty.avatarUrl} name={otherParty.username} className="w-12 h-12" onClick={() => handleUserClick(otherParty.id)} />
                                 <div>
                                     <p className="font-semibold">{otherParty.username}</p>
                                     <p className="text-sm text-text-body truncate w-48">{trade.description}</p>
@@ -1527,7 +1617,7 @@ const ServiceCard: React.FC<{ service: Service; user: User; onClick: () => void 
             </div>
             <div className="flex items-center justify-between mt-4 pt-3 border-t border-border-color/50">
                 <div className="flex items-center space-x-2">
-                    <img src={user.avatarUrl} alt={user.username} className="w-8 h-8 rounded-full" />
+                    <Avatar src={user.avatarUrl} name={user.username} className="w-8 h-8" />
                     <span className="text-xs font-medium text-text-body">{user.username}</span>
                 </div>
                 <div className="text-right">
@@ -1629,7 +1719,7 @@ export const ExploreScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'setSe
                     {filteredUsers.length > 0 ? filteredUsers.map(user => (
                         <div key={user.id} onClick={() => handleUserClick(user.id)} className="bg-surface/90 p-3 rounded-2xl flex items-center justify-between cursor-pointer border border-border-color hover:border-primary transition-colors glass-card surface-hover">
                             <div className="flex items-center space-x-3">
-                                <img src={user.avatarUrl} alt="avatar" className="w-12 h-12 rounded-full" />
+                                <Avatar src={user.avatarUrl} name={user.username} className="w-12 h-12" />
                                 <div>
                                     <p className="font-semibold">{user.username}</p>
                                     <div className="flex items-center space-x-1">
@@ -2065,7 +2155,7 @@ export const ProfileScreen: React.FC<ScreenProps> = ({setCurrentView, currentUse
         />
             {/* Profile Header */}
             <div className="flex flex-col items-center mb-8">
-                <img src={currentUser.avatarUrl} alt="avatar" className="w-32 h-32 rounded-full mb-4 border-4 border-primary/30 shadow-lg" />
+                <Avatar src={currentUser.avatarUrl} name={currentUser.username} className="w-32 h-32 mb-4 border-4 border-primary/30 shadow-lg" />
                 <div className="flex items-center space-x-3 mb-2">
                     <h1 className="text-4xl font-bold">{currentUser.username}</h1>
                     {currentUser.isVerified && <ICONS.verified className="w-8 h-8 text-primary" />}
@@ -2253,7 +2343,7 @@ Based on this information, provide a clear, concise, and impartial suggestion on
                 ) : (
                     <>
                         <div className="flex items-center space-x-3">
-                             <img src={otherParty.avatarUrl} alt="avatar" className="w-10 h-10 rounded-full" />
+                             <Avatar src={otherParty.avatarUrl} name={otherParty.username} className="w-10 h-10" />
                             <div>
                                 <p className="font-bold">Dispute with {otherParty.username}</p>
                                 <p className="text-xs text-text-body">{trade.description}</p>
@@ -2271,7 +2361,7 @@ Based on this information, provide a clear, concise, and impartial suggestion on
 
              <div className="flex-grow p-4 space-y-4 overflow-y-auto">
                 <div className="bg-surface border border-border-color p-4 rounded-xl">
-                    <h3 className="font-bold mb-2 flex items-center"><img src={adminUser.avatarUrl} className="w-6 h-6 rounded-full mr-2" />AI Mediator</h3>
+                    <h3 className="font-bold mb-2 flex items-center"><Avatar src={adminUser.avatarUrl} name={adminUser.username} className="w-6 h-6 mr-2" />AI Mediator</h3>
                     {isLoading ? <p className="text-text-body animate-pulse">Analyzing dispute...</p> : 
                     !aiSuggestion && <button onClick={getAiSuggestion} className="w-full bg-primary/20 text-primary font-bold py-2 rounded-lg text-sm border border-primary/50 hover:bg-primary/30">Ask for AI Suggestion</button>}
                     {aiSuggestion && <p className="text-sm text-text-body whitespace-pre-wrap">{aiSuggestion}</p>}
@@ -2290,7 +2380,7 @@ Based on this information, provide a clear, concise, and impartial suggestion on
                         <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                             <div className={`flex flex-col max-w-xs md:max-w-md rounded-2xl ${isMe ? 'bg-primary text-white rounded-br-none' : 'bg-surface text-white rounded-bl-none'} ${hasMedia && !hasContent ? 'p-1.5' : 'p-3'}`}>
                                 <div className="flex items-center mb-1">
-                                    <img src={user.avatarUrl} alt="avatar" className="w-5 h-5 rounded-full mr-2" />
+                                    <Avatar src={user.avatarUrl} name={user.username} className="w-5 h-5 mr-2" />
                                     <p className="font-bold text-xs">{user.username}</p>
                                 </div>
 
@@ -2378,7 +2468,7 @@ export const UserProfileScreen: React.FC<ScreenProps> = ({ setCurrentView, selec
 
     const totalTrades = trades.filter(t => t.buyer.id === user.id || t.seller.id === user.id).length;
     const completedTrades = trades.filter(t => (t.buyer.id === user.id || t.seller.id === user.id) && t.status === EscrowStatus.COMPLETED).length;
-    const completionRate = totalTrades > 0 ? Math.round((completedTrades / totalTrades) * 100) : 100;
+    const completionRate = totalTrades > 0 ? Math.round((completedTrades / totalTrades) * 100) : 0;
 
     const handleStartTrade = () => {
         if (user) {
@@ -2435,7 +2525,7 @@ export const UserProfileScreen: React.FC<ScreenProps> = ({ setCurrentView, selec
                 <div className="p-4">
                     <div className="flex flex-col items-center">
                         <div className="w-full h-32 rounded-2xl bg-gradient-primary relative mb-[-48px]"></div>
-                        <img src={user.avatarUrl} alt="avatar" className="w-24 h-24 rounded-full mb-4 border-4 border-background" />
+                        <Avatar src={user.avatarUrl} name={user.username} className="w-24 h-24 mb-4 border-4 border-background" />
 
                         <div className="flex items-center space-x-2">
                             <h1 className="text-3xl font-bold">{user.username}</h1>
@@ -2635,7 +2725,7 @@ export const SearchScreen: React.FC<ScreenProps> = ({ setCurrentView, currentUse
                                         return (
                                             <div key={trade.id} onClick={() => handleTradeClick(trade)} className="bg-surface p-3 rounded-2xl flex items-center justify-between cursor-pointer border border-border-color hover:border-primary transition-colors">
                                                 <div className="flex items-center space-x-3 overflow-hidden">
-                                                    <img src={otherParty.avatarUrl} alt="avatar" className="w-12 h-12 rounded-full" />
+                                                    <Avatar src={otherParty.avatarUrl} name={otherParty.username} className="w-12 h-12" />
                                                     <div className="overflow-hidden">
                                                         <p className="font-semibold truncate">{highlightText(trade.description, searchQuery)}</p>
                                                         <p className="text-sm text-text-body">vs. {highlightText(otherParty.username, searchQuery)}</p>
@@ -2656,7 +2746,7 @@ export const SearchScreen: React.FC<ScreenProps> = ({ setCurrentView, currentUse
                                     {filteredUsers.map(user => (
                                         <div key={user.id} onClick={() => handleUserClick(user.id)} className="bg-surface p-3 rounded-2xl flex items-center justify-between cursor-pointer border border-border-color hover:border-primary transition-colors">
                                             <div className="flex items-center space-x-3">
-                                                <img src={user.avatarUrl} alt="avatar" className="w-12 h-12 rounded-full" />
+                                                <Avatar src={user.avatarUrl} name={user.username} className="w-12 h-12" />
                                                 <div>
                                                     <p className="font-semibold">{highlightText(user.username, searchQuery)}</p>
                                                     <div className="flex items-center space-x-1">

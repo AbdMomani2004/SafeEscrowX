@@ -13,6 +13,37 @@ declare global {
 
 const tg = window.Telegram?.WebApp;
 
+export const Avatar: React.FC<{ src?: string; name: string; className?: string; onClick?: () => void }> = ({ src, name, className = 'w-10 h-10', onClick }) => {
+  const [broken, setBroken] = useState(false);
+  const initials = (name || '?')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('') || '?';
+
+  if (!src || broken) {
+    return (
+      <div
+        onClick={onClick}
+        className={`${className} rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white font-bold flex items-center justify-center ${onClick ? 'cursor-pointer' : ''}`}
+      >
+        {initials}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={name}
+      onClick={onClick}
+      onError={() => setBroken(true)}
+      className={`${className} rounded-full object-cover ${onClick ? 'cursor-pointer' : ''}`}
+    />
+  );
+};
+
 const timeAgo = (date: Date): string => {
     const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
     let interval = seconds / 31536000;

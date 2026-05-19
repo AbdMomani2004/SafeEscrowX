@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useUsers } from './UserContext';
 import { useTrades } from './AppContext';
 import { Currency, EscrowStatus, Trade } from './types';
-import { StatusBadge, CryptoIcon } from './components';
+import { StatusBadge, CryptoIcon, Avatar } from './components';
 import { API_ENDPOINTS } from './config/api';
 
 // Professional Icons
@@ -527,7 +527,7 @@ const UsersTable: React.FC = () => {
                 {filtered.map(u => (
                     <div key={u.id} className="bg-surface p-4 rounded-2xl border border-border-color">
                         <div className="flex items-center space-x-3">
-                        <img src={u.avatarUrl} className="w-10 h-10 rounded-full" />
+                        <Avatar src={u.avatarUrl} name={u.username} className="w-10 h-10" />
                             <div>
                                 <p className="font-semibold">{u.username}</p>
                                 <p className="text-xs text-text-body">Rating: {(Number(u.rating) || 0).toFixed(1)}</p>
@@ -575,7 +575,11 @@ const DisputesView: React.FC = () => {
 
 const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     const [tab, setTab] = useState<'trades' | 'users' | 'disputes' | 'services' | 'payouts'>('trades');
-    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [isDesktop, setIsDesktop] = useState<boolean>(() => {
+        if (typeof window === 'undefined') return true;
+        return window.innerWidth >= 1024;
+    });
     const [services, setServices] = useState<any[]>([]);
     const [trades, setTrades] = useState<any[]>([]);
     
@@ -597,6 +601,22 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             } catch {}
         })();
     }, []);
+
+    useEffect(() => {
+        const handleResize = () => {
+            const desktop = window.innerWidth >= 1024;
+            setIsDesktop(desktop);
+            if (desktop) {
+                setSidebarOpen(true);
+            } else {
+                setSidebarOpen(false);
+            }
+        };
+
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
     
     const pendingServicesCount = services.filter(s => !s.approved && !s.rejected).length;
     const pendingTradesCount = trades.filter(t => t.status === 'DISPUTE').length;
@@ -610,9 +630,26 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     ];
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex">
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex relative">
+            {!isDesktop && sidebarOpen && (
+                <button
+                    onClick={() => setSidebarOpen(false)}
+                    className="fixed inset-0 bg-black/50 z-30"
+                    aria-label="Close sidebar"
+                />
+            )}
             {/* Sidebar */}
-            <div className={`${sidebarOpen ? 'w-64' : 'w-16'} bg-white/10 backdrop-blur-lg border-r border-white/10 transition-all duration-300`}>
+            <div
+                className={`${
+                    isDesktop
+                        ? sidebarOpen ? 'w-64' : 'w-16'
+                        : sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+                } ${
+                    isDesktop ? 'relative' : 'fixed'
+                } top-0 left-0 h-full z-40 bg-white/10 backdrop-blur-lg border-r border-white/10 transition-all duration-300 ${
+                    isDesktop ? '' : 'w-64'
+                }`}
+            >
                 <div className="p-6">
                     <div className="flex items-center gap-3 mb-8">
                         <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
@@ -665,7 +702,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col">
+            <div className="flex-1 flex flex-col w-full">
                 {/* Header */}
                 <header className="bg-white/5 backdrop-blur-sm border-b border-white/10 p-6">
                     <div className="flex items-center justify-between">

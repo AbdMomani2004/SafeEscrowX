@@ -1,9 +1,10 @@
 import os
 import logging
 from pathlib import Path
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.error import BadRequest
+from telegram.constants import ParseMode
 
 # Enable logging
 logging.basicConfig(
@@ -30,8 +31,23 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 load_env_file(PROJECT_ROOT / '.env')
 load_env_file(PROJECT_ROOT / 'escrowx-backend' / '.env')
 
-# Bot token must come from environment
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+BOT_PROFILE = os.getenv("TELEGRAM_BOT_PROFILE", "main").strip().lower()
+
+def resolve_bot_token() -> str:
+    """Resolve bot token by profile while preserving legacy env compatibility."""
+    if BOT_PROFILE == "admin":
+        return (
+            os.getenv("ADMIN_BOT_TOKEN", "").strip()
+            or os.getenv("BOT_TOKEN", "").strip()
+        )
+    return (
+        os.getenv("MAIN_BOT_TOKEN", "").strip()
+        or os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        or os.getenv("BOT_TOKEN", "").strip()
+    )
+
+# Main user-facing bot token by default. Switch with TELEGRAM_BOT_PROFILE=admin.
+BOT_TOKEN = resolve_bot_token()
 
 # Channel and Group Configuration
 MAIN_CHANNEL = os.getenv("MAIN_CHANNEL", "@SafeEscrowX").strip()
@@ -40,6 +56,7 @@ TUTORIAL_CHANNEL = os.getenv("TUTORIAL_CHANNEL", "@SafeEscrowXTutorials").strip(
 TUTORIAL_CHANNEL_LINK = "https://t.me/SafeEscrowXTutorials"
 GROUP_CHAT_LINK = "https://t.me/SafeEscrowX_chat"
 SUPPORT_BOT = "@SafeEscrowXSupport_bot"
+MINI_APP_URL = os.getenv("MINI_APP_URL", "https://safeescrowxx.netlify.app").strip()
 
 async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """Check if user has joined both required channels."""
@@ -64,22 +81,31 @@ async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
     user = update.effective_user
+
+    if BOT_PROFILE == "admin":
+        admin_message = (
+            f"🛠️ <b>SafeEscrowX Admin Bot Active</b>\n\n"
+            f"Hello {user.first_name}, admin notification bot is running.\n"
+            "You will receive admin-side operational alerts here."
+        )
+        await update.message.reply_text(
+            text=admin_message,
+            parse_mode=ParseMode.HTML
+        )
+        return
     
     # Check if user has joined required channels
     is_subscribed = await check_subscription(update, context)
     
     if not is_subscribed:
         # User hasn't joined channels - show force join message
-        force_join_message = f"""
-🔒 **Access Restricted**
-
-To use SafeEscrowX bot, you must join our channels first:
-
-📢 **Main Channel**: [@SafeEscrowX]({MAIN_CHANNEL_LINK})
-📚 **Tutorial Channel**: [@SafeEscrowXTutorials]({TUTORIAL_CHANNEL_LINK})
-
-After joining both channels, click the button below to verify and access the bot.
-        """
+        force_join_message = (
+            "🔒 <b>Access Restricted</b>\n\n"
+            "To use SafeEscrowX bot, you must join our channels first:\n\n"
+            f"📢 <b>Main Channel</b>: <a href=\"{MAIN_CHANNEL_LINK}\">@SafeEscrowX</a>\n"
+            f"📚 <b>Tutorial Channel</b>: <a href=\"{TUTORIAL_CHANNEL_LINK}\">@SafeEscrowXTutorials</a>\n\n"
+            "After joining both channels, click the button below to verify and access the bot."
+        )
         
         keyboard = [
             [InlineKeyboardButton("✅ I've Joined Both Channels", callback_data="verify_subscription")]
@@ -89,36 +115,24 @@ After joining both channels, click the button below to verify and access the bot
         await update.message.reply_text(
             text=force_join_message,
             reply_markup=reply_markup,
-            parse_mode='Markdown',
-            disable_web_page_preview=True
+            parse_mode=ParseMode.HTML
         )
         return
     
     # User is subscribed - show welcome message
-    welcome_message = f"""
-🌟 **Welcome to SafeEscrowX, {user.first_name}!** 🌟
-
-Your trusted escrow service for secure transactions!
-
-🚀 **Features:**
-• Secure cryptocurrency escrow
-• Protected peer-to-peer trades
-• Dispute resolution system
-• 24/7 automated service
-
-💬 **Join Our Community:**
-• Group Chat: [SafeEscrowX Chat]({GROUP_CHAT_LINK})
-• Main Channel: [@SafeEscrowX]({MAIN_CHANNEL_LINK})
-• Tutorials: [@SafeEscrowXTutorials]({TUTORIAL_CHANNEL_LINK})
-
-🛟 **Need Help?**
-Contact our support bot: {SUPPORT_BOT}
-
-Start trading safely with SafeEscrowX! 💫
-    """
+    welcome_message = (
+        f"🚀 <b>Welcome to SafeEscrowX, {user.first_name}!</b>\n\n"
+        "Secure digital escrow made simple.\n\n"
+        "✅ Open trade with seller\n"
+        "✅ Chat before and during payment\n"
+        "✅ Deposit is held until delivery approval\n"
+        "✅ Dispute support when needed\n\n"
+        "Use the button below to launch the Mini App."
+    )
     
     # Create inline keyboard with all links
     keyboard = [
+        [InlineKeyboardButton("🚀 Open Mini App", web_app=WebAppInfo(url=MINI_APP_URL))],
         [InlineKeyboardButton("💬 Join Group Chat", url=GROUP_CHAT_LINK)],
         [InlineKeyboardButton("📢 Main Channel", url=MAIN_CHANNEL_LINK),
          InlineKeyboardButton("📚 Tutorials", url=TUTORIAL_CHANNEL_LINK)],
@@ -126,26 +140,11 @@ Start trading safely with SafeEscrowX! 💫
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Send message with image
-    image_url = "https://via.placeholder.com/400x200/4CAF50/FFFFFF?text=Welcome+to+SafeEscrowX"
-    
-    try:
-        await update.message.reply_photo(
-            photo=image_url,
-            caption=welcome_message,
-            reply_markup=reply_markup,
-            parse_mode='Markdown',
-            disable_web_page_preview=True
-        )
-    except Exception as e:
-        # Fallback to text message if image fails
-        logger.error(f"Error sending image: {e}")
-        await update.message.reply_text(
-            text=welcome_message,
-            reply_markup=reply_markup,
-            parse_mode='Markdown',
-            disable_web_page_preview=True
-        )
+    await update.message.reply_text(
+        text=welcome_message,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.HTML
+    )
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle button callbacks."""
@@ -160,13 +159,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         
         if is_subscribed:
             await query.edit_message_text(
-                text="✅ **Subscription Verified!**\n\nYou now have full access to SafeEscrowX bot. Use /start to begin!",
-                parse_mode='Markdown'
+                text="✅ <b>Subscription Verified!</b>\n\nYou now have full access to SafeEscrowX bot. Use /start to begin!",
+                parse_mode=ParseMode.HTML
             )
         else:
             await query.edit_message_text(
-                text="❌ **Verification Failed**\n\nPlease make sure you've joined BOTH channels:\n\n📢 @SafeEscrowX\n📚 @SafeEscrowXTutorials\n\nThen try again.",
-                parse_mode='Markdown'
+                text="❌ <b>Verification Failed</b>\n\nPlease make sure you've joined BOTH channels:\n\n📢 @SafeEscrowX\n📚 @SafeEscrowXTutorials\n\nThen try again.",
+                parse_mode=ParseMode.HTML
             )
 
 def main() -> None:
@@ -177,7 +176,7 @@ def main() -> None:
             "Set BOT_TOKEN in escrowx-backend/.env (or .env) and run again."
         )
 
-    logger.info("Starting SafeEscrowX bot...")
+    logger.info("Starting SafeEscrowX bot (profile=%s)...", BOT_PROFILE)
     logger.info("Main channel: %s | Tutorial channel: %s", MAIN_CHANNEL, TUTORIAL_CHANNEL)
 
     # Create the Application

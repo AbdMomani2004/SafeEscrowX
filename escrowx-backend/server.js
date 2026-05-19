@@ -34,7 +34,8 @@ console.log('🔍 Environment check:', {
 // Choose database: SQLite or PostgreSQL (PostgreSQL is default for production)
 const USE_POSTGRESQL = process.env.USE_POSTGRESQL === 'true' || process.env.NODE_ENV === 'production';
 const PAYMENT_RULES = {
-    MIN_DEPOSIT_USD: 5,
+    MIN_DEPOSIT_USD: 1,
+    MAX_TRADE_USD: 2500,
     MIN_WITHDRAWAL_USD: 5,
     WITHDRAWAL_FEE_USD: 1
 };
@@ -311,7 +312,7 @@ const normalizeWithdrawal = (row = {}) => {
 };
 
 const sendAdminBotNotification = async (title, lines = []) => {
-    const token = process.env.ADMIN_BOT_TOKEN || process.env.BOT_TOKEN;
+    const token = process.env.ADMIN_BOT_TOKEN || process.env.MAIN_BOT_TOKEN || process.env.BOT_TOKEN;
     const chatId = process.env.ADMIN_CHAT_ID;
     if (!token || !chatId) return;
 
@@ -383,7 +384,7 @@ await ensureSystemUsers();
 app.post('/api/verify', (req, res) => {
     try {
         const { initData } = req.body || {};
-        const botToken = process.env.BOT_TOKEN;
+        const botToken = process.env.WEBAPP_BOT_TOKEN || process.env.MAIN_BOT_TOKEN || process.env.BOT_TOKEN;
         const result = verifyTelegramInitData(initData, botToken);
         if (!result.ok) {
             return res.status(401).json({ ok: false, error: result.reason });
@@ -571,6 +572,13 @@ app.post('/api/trades', async (req, res) => {
         if (!id || !buyer_id || !seller_id || !amount || !currency) {
             console.log('❌ Missing required fields:', { id, buyer_id, seller_id, amount, currency });
             return res.status(400).json({ ok: false, error: 'Missing required fields' });
+        }
+        const amountUsd = Number(amount);
+        if (!Number.isFinite(amountUsd) || amountUsd < PAYMENT_RULES.MIN_DEPOSIT_USD) {
+            return res.status(400).json({ ok: false, error: `Minimum trade amount is $${PAYMENT_RULES.MIN_DEPOSIT_USD}` });
+        }
+        if (amountUsd > PAYMENT_RULES.MAX_TRADE_USD) {
+            return res.status(400).json({ ok: false, error: `Maximum trade amount is $${PAYMENT_RULES.MAX_TRADE_USD}` });
         }
         const tradeData = { id, buyer_id, seller_id, service_id, amount: Number(amount), currency, description };
         console.log('🔄 Calling trades.create with:', tradeData);
@@ -853,6 +861,11 @@ app.post('/api/services/submit', async (req, res) => {
         
         console.log('📤 Creating service with data:', serviceData);
         const createdService = await services.create(serviceData);
+        await sendAdminBotNotification('New service pending review', [
+            `Service: ${serviceData.title}`,
+            `Seller: ${serviceData.user_id}`,
+            `Price: ${serviceData.price} ${serviceData.currency}`
+        ]);
         console.log('✅ Service created successfully:', createdService);
         return res.json({ ok: true, service: createdService });
     } catch (e) {
