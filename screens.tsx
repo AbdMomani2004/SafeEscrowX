@@ -1670,14 +1670,26 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                                                 cancellation_reason: cancellationReason
                                             })
                                         });
-                                        const result = await response.json().catch(() => ({}));
+                                        const raw = await response.text();
+                                        let result: any = {};
+                                        try {
+                                            result = raw ? JSON.parse(raw) : {};
+                                        } catch {
+                                            result = { error: raw || `HTTP ${response.status}` };
+                                        }
                                         if (!response.ok || !result.ok) {
-                                            throw new Error(result?.error || `HTTP ${response.status}`);
+                                            const fullError = [
+                                                result?.error || `HTTP ${response.status}`,
+                                                result?.details || '',
+                                                result?.fallbackError || ''
+                                            ].filter(Boolean).join(' | ');
+                                            throw new Error(fullError);
                                         }
                                         updateTradeStatus(trade.id, EscrowStatus.CANCELLED);
                                         showToast("Trade cancelled successfully.");
-                                    } catch {
-                                        showToast("Failed to cancel trade. Please try again.");
+                                    } catch (error: any) {
+                                        const message = error?.message || 'Unknown error';
+                                        showToast(`Cancel failed: ${message}`);
                                     } finally {
                                         setIsCancellingTrade(false);
                                     }

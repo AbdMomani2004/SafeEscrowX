@@ -765,7 +765,11 @@ app.put('/api/trades/:id/cancel', async (req, res) => {
         
         return res.json({ ok: true, trade: updatedTrade });
     } catch (e) {
-        return res.status(500).json({ ok: false, error: 'Failed to cancel trade' });
+        return res.status(500).json({
+            ok: false,
+            error: 'Failed to cancel trade',
+            details: e?.message || String(e)
+        });
     }
 });
 
