@@ -1705,15 +1705,27 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                                     const cancellationReason = reason?.trim() || 'Cancelled by user';
                                     setIsCancellingTrade(true);
                                     try {
-                                        const response = await fetch(API_ENDPOINTS.tradeCancel(trade.id), {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({
-                                                cancelled_by: currentUser.id,
-                                                cancellation_reason: cancellationReason
-                                            })
+                                        const payload = JSON.stringify({
+                                            cancelled_by: currentUser.id,
+                                            cancellation_reason: cancellationReason
                                         });
-                                        const raw = await response.text();
+                                        const doCancel = async (method: 'POST' | 'PUT') => {
+                                            const res = await fetch(API_ENDPOINTS.tradeCancel(trade.id), {
+                                                method,
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: payload
+                                            });
+                                            const text = await res.text();
+                                            return { res, text };
+                                        };
+
+                                        let { res: response, text: raw } = await doCancel('POST');
+                                        if (response.status === 404) {
+                                            const retry = await doCancel('PUT');
+                                            response = retry.res;
+                                            raw = retry.text;
+                                        }
+
                                         let result: any = {};
                                         try {
                                             result = raw ? JSON.parse(raw) : {};

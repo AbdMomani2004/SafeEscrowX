@@ -316,11 +316,18 @@ const TradesTable: React.FC = () => {
     const cancelTrade = async (tradeId: string, cancelledBy: string, reason: string) => {
         setBusyTradeId(tradeId);
         try {
-            const resp = await fetch(API_ENDPOINTS.tradeCancel(tradeId), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cancelled_by: cancelledBy, cancellation_reason: reason })
-            });
+            const payload = JSON.stringify({ cancelled_by: cancelledBy, cancellation_reason: reason });
+            const doCancel = async (method: 'POST' | 'PUT') => {
+                return fetch(API_ENDPOINTS.tradeCancel(tradeId), {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload
+                });
+            };
+            let resp = await doCancel('POST');
+            if (resp.status === 404) {
+                resp = await doCancel('PUT');
+            }
             await requireOk(resp);
             
             // Update local state
