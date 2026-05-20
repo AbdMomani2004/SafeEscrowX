@@ -92,7 +92,7 @@ export const TradesProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [trades, setTrades] = useState<Trade[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch trades from backend on mount and when currentUser changes
+  // Fetch trades from backend when active user changes.
   useEffect(() => {
     const fetchTrades = async () => {
       if (!currentUser) {
@@ -132,9 +132,37 @@ export const TradesProvider: React.FC<{ children: ReactNode }> = ({ children }) 
               disputeMessages: []
             };
           });
-          
-          console.log('✅ Converted trades:', convertedTrades);
-          setTrades(convertedTrades);
+
+          // Preserve locally-loaded message buffers to avoid chat view flicker/resets.
+          setTrades((prev) => {
+            const prevById = new Map(prev.map((trade) => [trade.id, trade]));
+            let changed = prev.length !== convertedTrades.length;
+            const merged = convertedTrades.map((trade) => {
+              const existing = prevById.get(trade.id);
+              if (!existing) {
+                changed = true;
+                return trade;
+              }
+              const mergedTrade: Trade = {
+                ...trade,
+                messages: existing.messages || [],
+                disputeMessages: existing.disputeMessages || [],
+                buyerReview: trade.buyerReview ?? existing.buyerReview,
+                sellerReview: trade.sellerReview ?? existing.sellerReview,
+              };
+              if (
+                existing.status !== mergedTrade.status ||
+                existing.deposit_status !== mergedTrade.deposit_status ||
+                existing.delivery_status !== mergedTrade.delivery_status ||
+                existing.buyer.username !== mergedTrade.buyer.username ||
+                existing.seller.username !== mergedTrade.seller.username
+              ) {
+                changed = true;
+              }
+              return mergedTrade;
+            });
+            return changed ? merged : prev;
+          });
         } else {
           console.log('❌ No trades found or invalid response');
           setTrades([]);
@@ -149,7 +177,7 @@ export const TradesProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
 
     fetchTrades();
-  }, [currentUser, allUsers]);
+  }, [currentUser?.id]);
 
   const addTrade = (tradeData: NewTradeData): Trade => {
     const tradeId = `trade${Date.now()}`;

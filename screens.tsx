@@ -1310,8 +1310,10 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
             setLiveMessages(trade.messages || []);
             return;
         }
-        setLiveMessages([]);
-    }, [trade?.id, trade?.messages, activeThreadId]);
+        if (!activeThreadId) {
+            setLiveMessages([]);
+        }
+    }, [trade?.id, activeThreadId]);
 
     const conversationPeer = trade ? (trade.buyer.id === currentUser.id ? trade.seller : trade.buyer) : directChatPartner;
 
