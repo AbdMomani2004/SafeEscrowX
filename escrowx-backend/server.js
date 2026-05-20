@@ -745,11 +745,15 @@ app.put('/api/trades/:id/cancel', async (req, res) => {
     try {
         const { id } = req.params;
         const { cancelled_by, cancellation_reason } = req.body || {};
-        if (!cancelled_by || !cancellation_reason) {
-            return res.status(400).json({ ok: false, error: 'Missing cancelled_by or cancellation_reason' });
+        if (!cancelled_by) {
+            return res.status(400).json({ ok: false, error: 'Missing cancelled_by' });
         }
-        
-        const updatedTrade = await trades.cancelTrade(id, cancelled_by, cancellation_reason);
+
+        const normalizedReason = typeof cancellation_reason === 'string' && cancellation_reason.trim()
+            ? cancellation_reason.trim()
+            : 'Cancelled by user';
+
+        const updatedTrade = await trades.cancelTrade(id, cancelled_by, normalizedReason);
         if (!updatedTrade) return res.status(404).json({ ok: false, error: 'Trade not found' });
         
         return res.json({ ok: true, trade: updatedTrade });
@@ -896,6 +900,19 @@ async function verifyBlockchainPayment({ address, amount, currency, txHash }) {
         return {
             verified: false,
             message: `Live verification for ${currency} requires a configured provider. Set PAYMENT_VERIFICATION_MODE=sandbox for manual fallback.`
+        };
+    }
+    const sandboxAutoVerify = (process.env.SANDBOX_AUTO_VERIFY || '').trim().toLowerCase() === 'true';
+    if (!sandboxAutoVerify) {
+        return {
+            verified: false,
+            message: 'Auto verification is disabled in sandbox. Enable a live provider or set SANDBOX_AUTO_VERIFY=true for demo testing.'
+        };
+    }
+    if (!txHash.startsWith('demo_ok_')) {
+        return {
+            verified: false,
+            message: 'Sandbox simulation requires a tx hash starting with "demo_ok_" to mark payment as verified.'
         };
     }
     return { verified: true, confirmations: 1 };

@@ -1237,7 +1237,7 @@ export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showT
                         />
                         <button 
                             onClick={verifyPayment} 
-                            disabled={verifying || !txHash.trim()}
+                            disabled={verifying || txHash.trim().length < 10}
                             className="w-full bg-gradient-primary text-white font-bold py-3 rounded-2xl shadow-glow-primary disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {verifying ? 'Verifying Payment...' : 'Verify Payment'}
@@ -1250,7 +1250,7 @@ export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showT
                             </div>
                         )}
                         <p className="text-xs text-text-body text-center">
-                            After sending payment, paste your transaction hash and click "Verify Payment".
+                            After sending payment, paste a valid TXID and click "Verify Payment".
                         </p>
                     </div>
                 )}
@@ -1277,8 +1277,19 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
     const [isSearching, setIsSearching] = useState(false);
     const [submittedReview, setSubmittedReview] = useState(false);
     const [liveMessages, setLiveMessages] = useState<Message[]>([]);
+    const [isCancellingTrade, setIsCancellingTrade] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const seenIncomingRef = useRef<Set<string>>(new Set());
+
+    const sameMessageSet = (a: Message[], b: Message[]) => {
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) {
+            if (a[i].id !== b[i].id) return false;
+            if (a[i].content !== b[i].content) return false;
+            if (a[i].senderId !== b[i].senderId) return false;
+        }
+        return true;
+    };
 
      useEffect(() => {
         const handleBack = () => setCurrentView('chats');
@@ -1311,7 +1322,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
         const syncMessages = async () => {
             const serverMessages = await loadMessages(activeThreadId);
             if (!mounted) return;
-            setLiveMessages(serverMessages);
+            setLiveMessages((prev) => (sameMessageSet(prev, serverMessages) ? prev : serverMessages));
             if (seenIncomingRef.current.size === 0) {
                 serverMessages.forEach((msg) => seenIncomingRef.current.add(msg.id));
                 return;
@@ -1325,7 +1336,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
         };
 
         syncMessages();
-        const timer = setInterval(syncMessages, 3000);
+        const timer = setInterval(syncMessages, 5000);
         return () => {
             mounted = false;
             clearInterval(timer);
@@ -1340,7 +1351,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
     }, [liveMessages, searchQuery]);
 
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
     }, [filteredMessages]);
 
     const sendMessage = async () => {
@@ -1642,29 +1653,38 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                     {/* Cancel/Dispute actions for both parties */}
                     {trade && trade.status !== EscrowStatus.COMPLETED && trade.status !== EscrowStatus.CANCELLED && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
-                            <button 
-                                onClick={() => {
-                                    const reason = prompt("Reason for cancellation:");
-                                    if (reason) {
-                                                                                fetch(API_ENDPOINTS.tradeCancel(trade.id), {
+                            <button
+                                onClick={async () => {
+                                    if (isCancellingTrade) return;
+                                    const reason = prompt("Reason for cancellation (optional):");
+                                    const cancellationReason = reason?.trim() || 'Cancelled by user';
+                                    setIsCancellingTrade(true);
+                                    try {
+                                        const response = await fetch(API_ENDPOINTS.tradeCancel(trade.id), {
                                             method: 'PUT',
                                             headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ 
-                                                cancelled_by: currentUser.id, 
-                                                cancellation_reason: reason 
+                                            body: JSON.stringify({
+                                                cancelled_by: currentUser.id,
+                                                cancellation_reason: cancellationReason
                                             })
-                                        }).then(() => {
-                                            updateTradeStatus(trade.id, EscrowStatus.CANCELLED);
-                                            showToast("Trade cancelled successfully.");
-                                        }).catch(() => {
-                                            showToast("Failed to cancel trade. Please try again.");
                                         });
+                                        const result = await response.json().catch(() => ({}));
+                                        if (!response.ok || !result.ok) {
+                                            throw new Error(result?.error || `HTTP ${response.status}`);
+                                        }
+                                        updateTradeStatus(trade.id, EscrowStatus.CANCELLED);
+                                        showToast("Trade cancelled successfully.");
+                                    } catch {
+                                        showToast("Failed to cancel trade. Please try again.");
+                                    } finally {
+                                        setIsCancellingTrade(false);
                                     }
                                 }}
-                                className="bg-gray-600 text-white font-bold py-2 px-4 rounded-xl flex items-center justify-center space-x-2"
+                                disabled={isCancellingTrade}
+                                className="bg-gray-600 text-white font-bold py-2 px-4 rounded-xl flex items-center justify-center space-x-2 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 <ICONS.x className="w-4 h-4"/>
-                                <span>Cancel Trade</span>
+                                <span>{isCancellingTrade ? 'Cancelling...' : 'Cancel Trade'}</span>
                             </button>
                             {trade.status !== EscrowStatus.DISPUTE && (
                                 <button
@@ -1710,7 +1730,11 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                             type="text" 
                             value={message}
                             onChange={(e) => setMessage(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                            autoCapitalize="sentences"
+                            autoComplete="off"
+                            autoCorrect="on"
+                            spellCheck={true}
                             placeholder="Type a message..." 
                             className="flex-grow bg-background p-3 rounded-2xl text-white focus:outline-none focus:ring-2 focus:ring-primary border border-transparent focus:border-primary"
                         />
