@@ -1706,7 +1706,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                                     setIsCancellingTrade(true);
                                     try {
                                         const response = await fetch(API_ENDPOINTS.tradeCancel(trade.id), {
-                                            method: 'PUT',
+                                            method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({
                                                 cancelled_by: currentUser.id,

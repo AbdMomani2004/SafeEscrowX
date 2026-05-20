@@ -317,7 +317,7 @@ const TradesTable: React.FC = () => {
         setBusyTradeId(tradeId);
         try {
             const resp = await fetch(API_ENDPOINTS.tradeCancel(tradeId), {
-                method: 'PUT',
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ cancelled_by: cancelledBy, cancellation_reason: reason })
             });

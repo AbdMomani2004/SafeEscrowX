@@ -773,7 +773,7 @@ app.put('/api/trades/:id/request-revision', async (req, res) => {
     }
 });
 
-app.put('/api/trades/:id/cancel', async (req, res) => {
+const handleCancelTrade = async (req, res) => {
     try {
         const { id } = req.params;
         const { cancelled_by, cancellation_reason } = req.body || {};
@@ -803,7 +803,10 @@ app.put('/api/trades/:id/cancel', async (req, res) => {
             details: e?.message || String(e)
         });
     }
-});
+};
+
+app.put('/api/trades/:id/cancel', handleCancelTrade);
+app.post('/api/trades/:id/cancel', handleCancelTrade);
 
 // Payment verification endpoint
 app.post('/api/trades/:id/verify-payment', async (req, res) => {
