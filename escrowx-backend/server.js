@@ -883,7 +883,11 @@ async function verifyViaBlockCypher({ address, amount, currency, txHash }) {
     return { verified: true, confirmations };
 }
 
-// Hybrid verifier: live provider when enabled, deterministic sandbox fallback otherwise.
+// Production hardcoded verification policy.
+const HARD_PAYMENT_VERIFICATION_MODE = 'live';
+const HARD_SANDBOX_AUTO_VERIFY = false;
+
+// Hybrid verifier with forced production defaults.
 async function verifyBlockchainPayment({ address, amount, currency, txHash }) {
     const shouldMockFail = txHash.startsWith('fail_');
     if (shouldMockFail) {
@@ -892,17 +896,17 @@ async function verifyBlockchainPayment({ address, amount, currency, txHash }) {
     if (!address || !currency || !Number.isFinite(amount)) {
         return { verified: false, message: 'Invalid verification input' };
     }
-    const mode = (process.env.PAYMENT_VERIFICATION_MODE || 'sandbox').trim().toLowerCase();
+    const mode = HARD_PAYMENT_VERIFICATION_MODE;
     if (mode === 'live') {
         if (currency === 'BTC' || currency === 'LTC') {
             return verifyViaBlockCypher({ address, amount, currency, txHash });
         }
         return {
             verified: false,
-            message: `Live verification for ${currency} requires a configured provider. Set PAYMENT_VERIFICATION_MODE=sandbox for manual fallback.`
+            message: `Live verification for ${currency} requires a configured provider.`
         };
     }
-    const sandboxAutoVerify = (process.env.SANDBOX_AUTO_VERIFY || '').trim().toLowerCase() === 'true';
+    const sandboxAutoVerify = HARD_SANDBOX_AUTO_VERIFY;
     if (!sandboxAutoVerify) {
         return {
             verified: false,
