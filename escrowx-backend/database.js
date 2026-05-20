@@ -249,6 +249,12 @@ export const users = {
     },
 
     updateModeration: (userId, { banned, verified }) => {
+        const normalizeBool = (value) => {
+            if (value === undefined || value === null) return null;
+            return value ? 1 : 0;
+        };
+        const bannedValue = normalizeBool(banned);
+        const verifiedValue = normalizeBool(verified);
         const stmt = db.prepare(`
             UPDATE users 
             SET is_banned = COALESCE(?, is_banned),
@@ -256,7 +262,7 @@ export const users = {
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         `);
-        stmt.run(banned, verified, userId);
+        stmt.run(bannedValue, verifiedValue, userId);
         return users.getById(userId);
     }
 };

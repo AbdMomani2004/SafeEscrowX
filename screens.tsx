@@ -786,15 +786,15 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
 
     const seller = useMemo(() => getUserById(selectedUserId) || null, [selectedUserId, getUserById]);
 
-    const enteredAmount = useMemo(() => parseFloat(amount) || 0, [amount]);
+    const enteredUsdAmount = useMemo(() => parseFloat(amount) || 0, [amount]);
     const usdtRate = usdRates[Currency.USDT] || 1;
-    const convertedUsdtAmount = useMemo(() => {
-        if (!enteredAmount) return 0;
-        if (currency === Currency.USDT) return enteredAmount;
-        const selectedRate = usdRates[currency] || 0;
+    const convertedUsdtAmount = useMemo(() => enteredUsdAmount / usdtRate, [enteredUsdAmount, usdtRate]);
+    const selectedRate = usdRates[currency] || 0;
+    const payableInSelectedCurrency = useMemo(() => {
+        if (!convertedUsdtAmount) return 0;
         if (!selectedRate) return 0;
-        return enteredAmount * (selectedRate / usdtRate);
-    }, [enteredAmount, currency, usdRates, usdtRate]);
+        return convertedUsdtAmount / selectedRate;
+    }, [convertedUsdtAmount, selectedRate]);
     const fee = useMemo(() => getDepositFee(convertedUsdtAmount), [convertedUsdtAmount]);
     const total = useMemo(() => convertedUsdtAmount + fee, [convertedUsdtAmount, fee]);
 
@@ -843,7 +843,7 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
             alert(`Live ${currency} price is unavailable. Please wait and try again.`);
             return;
         }
-        if (!enteredAmount) {
+        if (!enteredUsdAmount) {
             tg?.HapticFeedback.notificationOccurred('error');
             alert('Please enter a valid amount.');
             return;
@@ -903,11 +903,8 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                     You are about to create an escrow with
                     <span className="font-bold text-white"> {seller ? seller.username : 'selected seller'}</span>.
                 </p>
-                <p>
-                    Amount:
-                    <span className="font-bold text-white"> {enteredAmount.toFixed(8)} {currency}</span>
-                    <span className="text-text-body"> (≈ {convertedUsdtAmount.toFixed(2)} USDT)</span>
-                </p>
+                <p>Amount: <span className="font-bold text-white">${enteredUsdAmount.toFixed(2)}</span> <span className="text-text-body">(≈ {convertedUsdtAmount.toFixed(2)} USDT)</span></p>
+                <p>Payable in {currency}: <span className="font-bold text-white">{payableInSelectedCurrency.toFixed(8)} {currency}</span></p>
                 <p>Description: <span className="font-bold text-white">{description}</span></p>
                 <p className="pt-2">Please confirm the details are correct before proceeding.</p>
             </div>
@@ -959,7 +956,7 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                 </div>
 
                  <div>
-                    <label className="text-text-body mb-2 block font-medium">Trade Amount ({currency})</label>
+                    <label className="text-text-body mb-2 block font-medium">Trade Amount (USD)</label>
                     <div className="flex space-x-2">
                         <input type="text" inputMode="decimal" value={amount} onChange={e => handleAmountChange(e.target.value)} placeholder="e.g. 50.00" className="w-full bg-surface p-3 rounded-2xl focus:ring-2 focus:ring-primary focus:outline-none border border-border-color/80" />
                         <div className="bg-surface rounded-2xl p-1 flex space-x-1 border border-border-color/80">
@@ -972,7 +969,7 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                     </div>
                     <p className="text-xs text-text-body mt-2">
                         Selected {currency} price: {ratesLoading ? 'Loading...' : `$${formatRate(usdRates[currency])}`} •
-                        Entered value: <span className="text-white">≈ {convertedUsdtAmount.toFixed(2)} USDT</span>
+                        You will pay: <span className="text-white">{payableInSelectedCurrency.toFixed(8)} {currency}</span>
                     </p>
                 </div>
 
