@@ -786,11 +786,17 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
 
     const seller = useMemo(() => getUserById(selectedUserId) || null, [selectedUserId, getUserById]);
 
-    const fee = useMemo(() => {
-        const baseAmount = parseFloat(amount) || 0;
-        return getDepositFee(baseAmount);
-    }, [amount]);
-    const total = useMemo(() => (parseFloat(amount) || 0) + fee, [amount, fee]);
+    const enteredAmount = useMemo(() => parseFloat(amount) || 0, [amount]);
+    const usdtRate = usdRates[Currency.USDT] || 1;
+    const convertedUsdtAmount = useMemo(() => {
+        if (!enteredAmount) return 0;
+        if (currency === Currency.USDT) return enteredAmount;
+        const selectedRate = usdRates[currency] || 0;
+        if (!selectedRate) return 0;
+        return enteredAmount * (selectedRate / usdtRate);
+    }, [enteredAmount, currency, usdRates, usdtRate]);
+    const fee = useMemo(() => getDepositFee(convertedUsdtAmount), [convertedUsdtAmount]);
+    const total = useMemo(() => convertedUsdtAmount + fee, [convertedUsdtAmount, fee]);
 
     useEffect(() => {
         let mounted = true;
@@ -832,15 +838,24 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
             alert("Please fill all fields and agree to the terms.");
             return;
         }
-        const numericAmount = parseFloat(amount);
-        if (!numericAmount || numericAmount < MIN_DEPOSIT_USD) {
+        if (currency !== Currency.USDT && !(usdRates[currency] > 0)) {
             tg?.HapticFeedback.notificationOccurred('error');
-            alert(`Minimum deposit is $${MIN_DEPOSIT_USD}.`);
+            alert(`Live ${currency} price is unavailable. Please wait and try again.`);
             return;
         }
-        if (numericAmount > MAX_TRADE_USD) {
+        if (!enteredAmount) {
             tg?.HapticFeedback.notificationOccurred('error');
-            alert(`Maximum trade amount is $${MAX_TRADE_USD}.`);
+            alert('Please enter a valid amount.');
+            return;
+        }
+        if (!convertedUsdtAmount || convertedUsdtAmount < MIN_DEPOSIT_USD) {
+            tg?.HapticFeedback.notificationOccurred('error');
+            alert(`Minimum trade amount is ${MIN_DEPOSIT_USD} USDT.`);
+            return;
+        }
+        if (convertedUsdtAmount > MAX_TRADE_USD) {
+            tg?.HapticFeedback.notificationOccurred('error');
+            alert(`Maximum trade amount is ${MAX_TRADE_USD} USDT.`);
             return;
         }
         // If seller is not selected, guide the user immediately
@@ -864,7 +879,7 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
             buyer: currentUser,
             seller: effectiveSeller,
             description,
-            amount: parseFloat(amount),
+            amount: Number(convertedUsdtAmount.toFixed(6)),
             currency,
             deliveryTimeHours: parseInt(deliveryTime) * 24,
         });
@@ -888,7 +903,11 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                     You are about to create an escrow with
                     <span className="font-bold text-white"> {seller ? seller.username : 'selected seller'}</span>.
                 </p>
-                <p>Amount: <span className="font-bold text-white">${Number(amount || 0).toFixed(2)} (pay with {currency})</span></p>
+                <p>
+                    Amount:
+                    <span className="font-bold text-white"> {enteredAmount.toFixed(8)} {currency}</span>
+                    <span className="text-text-body"> (≈ {convertedUsdtAmount.toFixed(2)} USDT)</span>
+                </p>
                 <p>Description: <span className="font-bold text-white">{description}</span></p>
                 <p className="pt-2">Please confirm the details are correct before proceeding.</p>
             </div>
@@ -940,7 +959,7 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                 </div>
 
                  <div>
-                    <label className="text-text-body mb-2 block font-medium">Trade Amount (USD)</label>
+                    <label className="text-text-body mb-2 block font-medium">Trade Amount ({currency})</label>
                     <div className="flex space-x-2">
                         <input type="text" inputMode="decimal" value={amount} onChange={e => handleAmountChange(e.target.value)} placeholder="e.g. 50.00" className="w-full bg-surface p-3 rounded-2xl focus:ring-2 focus:ring-primary focus:outline-none border border-border-color/80" />
                         <div className="bg-surface rounded-2xl p-1 flex space-x-1 border border-border-color/80">
@@ -952,7 +971,8 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                         </div>
                     </div>
                     <p className="text-xs text-text-body mt-2">
-                        Selected {currency} price: {ratesLoading ? 'Loading...' : `$${formatRate(usdRates[currency])}`}
+                        Selected {currency} price: {ratesLoading ? 'Loading...' : `$${formatRate(usdRates[currency])}`} •
+                        Entered value: <span className="text-white">≈ {convertedUsdtAmount.toFixed(2)} USDT</span>
                     </p>
                 </div>
 
@@ -978,14 +998,14 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                 <div className="bg-surface border border-border-color/80 rounded-2xl p-4 space-y-2 shadow-[0_10px_24px_rgba(0,0,0,0.2)]">
                     <div className="text-text-body text-sm flex justify-between">
                         <span>Fee ({(parseFloat(amount) || 0) < 100 ? '$1 under $100' : '1% above $100'})</span>
-                        <span>${fee.toFixed(2)}</span>
+                        <span>${fee.toFixed(2)} (USDT)</span>
                     </div>
                      <div className="text-text-body text-sm flex justify-between font-bold">
-                        <span>Total charge (USD)</span>
-                        <span className="text-white">${total.toFixed(2)}</span>
+                        <span>Total charge (USDT)</span>
+                        <span className="text-white">{total.toFixed(2)} USDT</span>
                     </div>
                     <p className="text-xs text-text-body">
-                        Buyer can choose payment currency in chat. Amount will be converted using live market price.
+                        Buyer can choose payment currency in chat. Conversion uses live market price.
                     </p>
                 </div>
 
