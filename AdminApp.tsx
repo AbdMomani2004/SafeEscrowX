@@ -130,53 +130,35 @@ const TradesTable: React.FC = () => {
     const [query, setQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<EscrowStatus | 'all'>('all');
     const [loading, setLoading] = useState(true);
+    const [busyTradeId, setBusyTradeId] = useState<string | null>(null);
 
     // Fetch trades from backend
     useEffect(() => {
         const fetchTrades = async () => {
             try {
-                const resp = await fetch(API_ENDPOINTS.trades);
-                const json = await resp.json();
-                const tradesData = Array.isArray(json.trades) ? json.trades : [];
-                
-                // Fetch user data for each trade
-                const tradesWithUsers = await Promise.all(
-                    tradesData.map(async (trade: any) => {
-                        try {
-                            const [buyerResp, sellerResp] = await Promise.all([
-                                fetch(API_ENDPOINTS.users),
-                                fetch(API_ENDPOINTS.users)
-                            ]);
-                            const [buyerJson, sellerJson] = await Promise.all([
-                                buyerResp.json(),
-                                sellerResp.json()
-                            ]);
-                            
-                            const buyers = Array.isArray(buyerJson.users) ? buyerJson.users : [];
-                            const sellers = Array.isArray(sellerJson.users) ? sellerJson.users : [];
-                            
-                            const buyer = buyers.find((u: any) => u.id === trade.buyer_id) || { id: trade.buyer_id, username: 'Unknown Buyer' };
-                            const seller = sellers.find((u: any) => u.id === trade.seller_id) || { id: trade.seller_id, username: 'Unknown Seller' };
-                            
-                            return {
-                                ...trade,
-                                buyer: { id: buyer.id, username: buyer.username || 'Unknown Buyer' },
-                                seller: { id: seller.id, username: seller.username || 'Unknown Seller' },
-                                amount: Number(trade.amount),
-                                createdAt: new Date(trade.created_at)
-                            };
-                        } catch (error) {
-                            console.error('Error fetching user data for trade:', error);
-                            return {
-                                ...trade,
-                                buyer: { id: trade.buyer_id, username: 'Unknown Buyer' },
-                                seller: { id: trade.seller_id, username: 'Unknown Seller' },
-                                amount: Number(trade.amount),
-                                createdAt: new Date(trade.created_at)
-                            };
-                        }
-                    })
-                );
+                const [tradesResp, usersResp] = await Promise.all([
+                    fetch(API_ENDPOINTS.trades),
+                    fetch(API_ENDPOINTS.users)
+                ]);
+                const [tradesJson, usersJson] = await Promise.all([
+                    tradesResp.json(),
+                    usersResp.json()
+                ]);
+                const tradesData = Array.isArray(tradesJson.trades) ? tradesJson.trades : [];
+                const users = Array.isArray(usersJson.users) ? usersJson.users : [];
+                const usersById = new Map<string, any>(users.map((u: any) => [String(u.id), u]));
+
+                const tradesWithUsers = tradesData.map((trade: any) => {
+                    const buyer: any = usersById.get(String(trade.buyer_id));
+                    const seller: any = usersById.get(String(trade.seller_id));
+                    return {
+                        ...trade,
+                        buyer: { id: trade.buyer_id, username: buyer?.username || 'Unknown Buyer' },
+                        seller: { id: trade.seller_id, username: seller?.username || 'Unknown Seller' },
+                        amount: Number(trade.amount),
+                        createdAt: new Date(trade.created_at)
+                    };
+                });
                 
                 setTrades(tradesWithUsers);
             } catch (error) {
@@ -209,118 +191,162 @@ const TradesTable: React.FC = () => {
         return result;
     }, [trades, query, statusFilter]);
 
+    const requireOk = async (response: Response) => {
+        const payload = await response.json().catch(() => ({} as any));
+        if (!response.ok || payload?.ok === false) {
+            throw new Error(payload?.error || `HTTP ${response.status}`);
+        }
+        return payload;
+    };
+
     const setStatus = async (t: any, s: EscrowStatus) => {
+        setBusyTradeId(t.id);
         try {
-            await fetch(API_ENDPOINTS.tradeStatus(t.id), {
+            const resp = await fetch(API_ENDPOINTS.tradeStatus(t.id), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: s })
             });
+            await requireOk(resp);
             
             // Update local state
             setTrades(prev => prev.map(trade => 
                 trade.id === t.id ? { ...trade, status: s } : trade
             ));
+            alert(`Trade status updated to ${s.replace('_', ' ')}.`);
         } catch (error) {
             console.error('Error updating trade status:', error);
+            alert(`Failed to update trade status: ${(error as Error)?.message || 'Unknown error'}`);
+        } finally {
+            setBusyTradeId(null);
         }
     };
 
     const approveDeposit = async (tradeId: string) => {
+        setBusyTradeId(tradeId);
         try {
-            await fetch(API_ENDPOINTS.tradeDeposit(tradeId), {
+            const resp = await fetch(API_ENDPOINTS.tradeDeposit(tradeId), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ deposit_status: 'APPROVED' })
             });
+            await requireOk(resp);
             
             // Update local state
             setTrades(prev => prev.map(trade => 
                 trade.id === tradeId ? { ...trade, deposit_status: 'APPROVED', status: 'HELD' } : trade
             ));
+            alert('Deposit approved.');
         } catch (error) {
             console.error('Error approving deposit:', error);
+            alert(`Failed to approve deposit: ${(error as Error)?.message || 'Unknown error'}`);
+        } finally {
+            setBusyTradeId(null);
         }
     };
 
     const rejectDeposit = async (tradeId: string) => {
+        setBusyTradeId(tradeId);
         try {
-            await fetch(API_ENDPOINTS.tradeDeposit(tradeId), {
+            const resp = await fetch(API_ENDPOINTS.tradeDeposit(tradeId), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ deposit_status: 'REJECTED' })
             });
+            await requireOk(resp);
             
             // Update local state
             setTrades(prev => prev.map(trade => 
                 trade.id === tradeId ? { ...trade, deposit_status: 'REJECTED' } : trade
             ));
+            alert('Deposit rejected.');
         } catch (error) {
             console.error('Error rejecting deposit:', error);
+            alert(`Failed to reject deposit: ${(error as Error)?.message || 'Unknown error'}`);
+        } finally {
+            setBusyTradeId(null);
         }
     };
 
     const approveDelivery = async (tradeId: string) => {
+        setBusyTradeId(tradeId);
         try {
-            await fetch(API_ENDPOINTS.tradeApproveDelivery(tradeId), {
+            const resp = await fetch(API_ENDPOINTS.tradeApproveDelivery(tradeId), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' }
             });
+            await requireOk(resp);
             
             // Update local state
             setTrades(prev => prev.map(trade => 
                 trade.id === tradeId ? { ...trade, status: 'COMPLETED', delivery_status: 'APPROVED' } : trade
             ));
+            alert('Delivery approved and funds released.');
         } catch (error) {
             console.error('Error approving delivery:', error);
+            alert(`Failed to approve delivery: ${(error as Error)?.message || 'Unknown error'}`);
+        } finally {
+            setBusyTradeId(null);
         }
     };
 
     const requestRevision = async (tradeId: string, revisionMessage: string) => {
+        setBusyTradeId(tradeId);
         try {
-            await fetch(API_ENDPOINTS.tradeRequestRevision(tradeId), {
+            const resp = await fetch(API_ENDPOINTS.tradeRequestRevision(tradeId), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ revision_message: revisionMessage })
             });
+            await requireOk(resp);
             
             // Update local state
             setTrades(prev => prev.map(trade => 
                 trade.id === tradeId ? { ...trade, delivery_status: 'REVISION_REQUESTED' } : trade
             ));
+            alert('Revision requested.');
         } catch (error) {
             console.error('Error requesting revision:', error);
+            alert(`Failed to request revision: ${(error as Error)?.message || 'Unknown error'}`);
+        } finally {
+            setBusyTradeId(null);
         }
     };
 
     const cancelTrade = async (tradeId: string, cancelledBy: string, reason: string) => {
+        setBusyTradeId(tradeId);
         try {
-            await fetch(API_ENDPOINTS.tradeCancel(tradeId), {
+            const resp = await fetch(API_ENDPOINTS.tradeCancel(tradeId), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ cancelled_by: cancelledBy, cancellation_reason: reason })
             });
+            await requireOk(resp);
             
             // Update local state
             setTrades(prev => prev.map(trade => 
                 trade.id === tradeId ? { ...trade, status: 'CANCELLED' } : trade
             ));
+            alert('Trade cancelled.');
         } catch (error) {
             console.error('Error cancelling trade:', error);
+            alert(`Failed to cancel trade: ${(error as Error)?.message || 'Unknown error'}`);
+        } finally {
+            setBusyTradeId(null);
         }
     };
 
     return (
-        <div className="space-y-6">
+            <div className="space-y-5">
             {/* Search and Filter Bar */}
             <div className="flex flex-col sm:flex-row gap-4">
                 <div className="flex-1 relative">
                     <Icons.search />
-                    <input 
+                    <input
                         value={query} 
                         onChange={e => setQuery(e.target.value)} 
                         placeholder="Search trades by description, buyer, or seller..." 
-                        className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 pl-10 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 pl-10 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all min-h-[46px]"
                     />
                 </div>
                 <div className="flex items-center gap-2">
@@ -328,7 +354,7 @@ const TradesTable: React.FC = () => {
                     <select 
                         value={statusFilter} 
                         onChange={e => setStatusFilter(e.target.value as EscrowStatus | 'all')}
-                        className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all min-h-[46px]"
                     >
                         <option value="all" className="bg-slate-800">All Status</option>
                         {Object.values(EscrowStatus).map(status => (
@@ -400,7 +426,8 @@ const TradesTable: React.FC = () => {
                                 <button 
                                     key={s} 
                                     onClick={() => setStatus(t, s)} 
-                                    className={`px-3 py-2 text-sm rounded-lg border transition-all duration-200 min-h-[40px] touch-manipulation ${
+                                    disabled={busyTradeId === t.id}
+                                    className={`px-3 py-2 text-sm rounded-lg border transition-all duration-200 min-h-[42px] touch-manipulation active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed ${
                                         t.status === s 
                                             ? 'bg-blue-500/20 border-blue-500/50 text-blue-300' 
                                             : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10 hover:text-white'
@@ -416,13 +443,15 @@ const TradesTable: React.FC = () => {
                                 <div className="grid grid-cols-2 sm:flex gap-2">
                                     <button
                                         onClick={() => approveDeposit(t.id)}
-                                        className="px-4 py-2 text-sm rounded-lg bg-green-500/20 border border-green-500/50 text-green-300 hover:bg-green-500/30 transition-all duration-200 min-h-[42px] touch-manipulation"
+                                        disabled={busyTradeId === t.id}
+                                        className="px-4 py-2 text-sm rounded-lg bg-green-500/20 border border-green-500/50 text-green-300 hover:bg-green-500/30 transition-all duration-200 min-h-[44px] touch-manipulation active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
                                         Approve Deposit
                                     </button>
                                     <button
                                         onClick={() => rejectDeposit(t.id)}
-                                        className="px-4 py-2 text-sm rounded-lg bg-red-500/20 border border-red-500/50 text-red-300 hover:bg-red-500/30 transition-all duration-200 min-h-[42px] touch-manipulation"
+                                        disabled={busyTradeId === t.id}
+                                        className="px-4 py-2 text-sm rounded-lg bg-red-500/20 border border-red-500/50 text-red-300 hover:bg-red-500/30 transition-all duration-200 min-h-[44px] touch-manipulation active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
                                         Reject Deposit
                                     </button>
@@ -434,7 +463,8 @@ const TradesTable: React.FC = () => {
                                 <div className="grid grid-cols-1 sm:flex gap-2">
                                     <button
                                         onClick={() => cancelTrade(t.id, 'admin', 'Cancelled by admin')}
-                                        className="px-4 py-2 text-sm rounded-lg bg-red-500/20 border border-red-500/50 text-red-300 hover:bg-red-500/30 transition-all duration-200 min-h-[42px] touch-manipulation"
+                                        disabled={busyTradeId === t.id}
+                                        className="px-4 py-2 text-sm rounded-lg bg-red-500/20 border border-red-500/50 text-red-300 hover:bg-red-500/30 transition-all duration-200 min-h-[44px] touch-manipulation active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
                                         Cancel Trade
                                     </button>
@@ -445,13 +475,15 @@ const TradesTable: React.FC = () => {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                     <button
                                         onClick={() => approveDelivery(t.id)}
-                                        className="px-4 py-2 text-sm rounded-lg bg-green-500/20 border border-green-500/50 text-green-300 hover:bg-green-500/30 transition-all duration-200 min-h-[42px] touch-manipulation"
+                                        disabled={busyTradeId === t.id}
+                                        className="px-4 py-2 text-sm rounded-lg bg-green-500/20 border border-green-500/50 text-green-300 hover:bg-green-500/30 transition-all duration-200 min-h-[44px] touch-manipulation active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
                                         Force Approve
                                     </button>
                                     <button
                                         onClick={() => requestRevision(t.id, 'Admin requested revision')}
-                                        className="px-4 py-2 text-sm rounded-lg bg-orange-500/20 border border-orange-500/50 text-orange-300 hover:bg-orange-500/30 transition-all duration-200 min-h-[42px] touch-manipulation"
+                                        disabled={busyTradeId === t.id}
+                                        className="px-4 py-2 text-sm rounded-lg bg-orange-500/20 border border-orange-500/50 text-orange-300 hover:bg-orange-500/30 transition-all duration-200 min-h-[44px] touch-manipulation active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
                                         Request Revision
                                     </button>
@@ -523,7 +555,7 @@ const UsersTable: React.FC = () => {
     return (
         <div>
             <div className="mb-3">
-                <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search users..." className="w-full bg-background p-3 rounded-2xl border border-border-color" />
+                <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search users..." className="w-full bg-background p-3 rounded-2xl border border-border-color min-h-[46px]" />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {filtered.map(u => (
@@ -539,9 +571,9 @@ const UsersTable: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-                        <div className="flex gap-2 mt-3">
-                            <button disabled={busy===u.id} onClick={() => moderate(u.id, { verified: !u.isVerified })} className="px-3 py-1 text-xs rounded-full bg-success/20 text-success border border-success/40">{u.isVerified ? 'Unverify' : 'Verify'}</button>
-                            <button disabled={busy===u.id} onClick={() => moderate(u.id, { banned: !u.isBanned })} className="px-3 py-1 text-xs rounded-full bg-danger/20 text-danger border border-danger/40">{u.isBanned ? 'Unban' : 'Ban'}</button>
+                        <div className="grid grid-cols-2 gap-2 mt-3">
+                            <button disabled={busy===u.id} onClick={() => moderate(u.id, { verified: !u.isVerified })} className="px-3 py-2 text-sm rounded-full bg-success/20 text-success border border-success/40 min-h-[42px] touch-manipulation active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed">{u.isVerified ? 'Unverify' : 'Verify'}</button>
+                            <button disabled={busy===u.id} onClick={() => moderate(u.id, { banned: !u.isBanned })} className="px-3 py-2 text-sm rounded-full bg-danger/20 text-danger border border-danger/40 min-h-[42px] touch-manipulation active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed">{u.isBanned ? 'Unban' : 'Ban'}</button>
                         </div>
                     </div>
                 ))}
@@ -667,7 +699,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     ];
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex relative overflow-x-hidden pt-[env(safe-area-inset-top)]">
+        <div className="h-[100dvh] bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex relative overflow-hidden pt-[env(safe-area-inset-top)] touch-pan-y">
             {!isDesktop && sidebarOpen && (
                 <button
                     onClick={() => setSidebarOpen(false)}
@@ -742,7 +774,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col w-full">
+            <div className="flex-1 flex flex-col w-full min-w-0">
                 {/* Header */}
                 <header className="bg-white/5 backdrop-blur-sm border-b border-white/10 p-4 md:p-6">
                     <div className="flex items-center justify-between">
@@ -784,7 +816,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 </header>
 
                 {/* Content */}
-                <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-auto">
+                <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-y-auto overscroll-contain pb-[max(5rem,env(safe-area-inset-bottom))]">
                     <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
                         <div className="flex items-center justify-between mb-2">
                             <h3 className="text-sm font-semibold text-white">Live Market Prices (USD)</h3>
@@ -933,16 +965,16 @@ const ServicesTable: React.FC = () => {
     const rejectedCount = services.filter(s => s.rejected).length;
     
     return (
-        <div className="space-y-6">
+            <div className="space-y-5">
             {/* Search and Filter Bar */}
             <div className="flex flex-col sm:flex-row gap-4">
                 <div className="flex-1 relative">
                     <Icons.search />
-                    <input 
+                    <input
                         value={query} 
                         onChange={e => setQuery(e.target.value)} 
                         placeholder="Search services by title, description, or seller..." 
-                        className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 pl-10 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 pl-10 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all min-h-[46px]"
                     />
                 </div>
                 <div className="flex items-center gap-2">
@@ -950,7 +982,7 @@ const ServicesTable: React.FC = () => {
                     <select 
                         value={statusFilter} 
                         onChange={e => setStatusFilter(e.target.value as any)}
-                        className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all min-h-[46px]"
                     >
                         <option value="all" className="bg-slate-800">All Services</option>
                         <option value="pending" className="bg-slate-800">Pending Review</option>
@@ -983,8 +1015,8 @@ const ServicesTable: React.FC = () => {
             {/* Services List */}
             <div className="space-y-4">
                 {filtered.map(s => (
-                    <div key={`${s.userId}-${s.id}`} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:bg-white/10 transition-all duration-200">
-                        <div className="flex items-start justify-between mb-4">
+                    <div key={`${s.userId}-${s.id}`} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 sm:p-6 hover:bg-white/10 transition-all duration-200">
+                        <div className="flex items-start justify-between mb-4 gap-2">
                             <div className="flex-1">
                                 <div className="flex items-center gap-3 mb-2">
                                     <h3 className="font-semibold text-white text-lg">{s.title}</h3>
@@ -999,7 +1031,7 @@ const ServicesTable: React.FC = () => {
                                     </span>
                             </div>
                                 <p className="text-white/70 text-sm mb-3">{s.description}</p>
-                                <div className="flex items-center gap-4 text-xs text-white/60">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-3 text-xs text-white/60">
                                     <span>Seller: <span className="text-white">{s.user?.username}</span></span>
                                     <span>Price: <span className="text-white">{s.price} {s.currency}</span></span>
                                     <span>Created: {new Date(s.createdAt || Date.now()).toLocaleDateString()}</span>
@@ -1008,18 +1040,18 @@ const ServicesTable: React.FC = () => {
                         </div>
                         
                         {!s.approved && !s.rejected && (
-                            <div className="flex gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <button 
                                     disabled={busy === s.id} 
                                     onClick={() => moderate(s.userId, s.id, true)} 
-                                    className="px-6 py-2 text-sm rounded-lg bg-green-500/20 text-green-300 border border-green-500/40 hover:bg-green-500/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="px-4 py-3 text-sm rounded-lg bg-green-500/20 text-green-300 border border-green-500/40 hover:bg-green-500/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] touch-manipulation active:scale-[0.99]"
                                 >
                                     {busy === s.id ? 'Processing...' : 'Approve Service'}
                                 </button>
                                 <button 
                                     disabled={busy === s.id} 
                                     onClick={() => moderate(s.userId, s.id, false)} 
-                                    className="px-6 py-2 text-sm rounded-lg bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="px-4 py-3 text-sm rounded-lg bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] touch-manipulation active:scale-[0.99]"
                                 >
                                     {busy === s.id ? 'Processing...' : 'Reject Service'}
                                 </button>
@@ -1110,25 +1142,25 @@ const SettingsPanel: React.FC = () => {
         <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <label className="text-sm text-white/80">Min Trade (USD)
-                    <input value={form.minDepositUsd} onChange={e => setNumber('minDepositUsd', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color" />
+                    <input type="number" inputMode="decimal" value={form.minDepositUsd} onChange={e => setNumber('minDepositUsd', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color min-h-[46px] text-white" />
                 </label>
                 <label className="text-sm text-white/80">Max Trade (USD)
-                    <input value={form.maxTradeUsd} onChange={e => setNumber('maxTradeUsd', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color" />
+                    <input type="number" inputMode="decimal" value={form.maxTradeUsd} onChange={e => setNumber('maxTradeUsd', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color min-h-[46px] text-white" />
                 </label>
                 <label className="text-sm text-white/80">Min Withdrawal (USD)
-                    <input value={form.minWithdrawalUsd} onChange={e => setNumber('minWithdrawalUsd', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color" />
+                    <input type="number" inputMode="decimal" value={form.minWithdrawalUsd} onChange={e => setNumber('minWithdrawalUsd', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color min-h-[46px] text-white" />
                 </label>
                 <label className="text-sm text-white/80">Withdrawal Fee (USD)
-                    <input value={form.withdrawalFeeUsd} onChange={e => setNumber('withdrawalFeeUsd', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color" />
+                    <input type="number" inputMode="decimal" value={form.withdrawalFeeUsd} onChange={e => setNumber('withdrawalFeeUsd', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color min-h-[46px] text-white" />
                 </label>
                 <label className="text-sm text-white/80">Flat Deposit Fee (&lt; $100)
-                    <input value={form.depositFlatFeeUnder100} onChange={e => setNumber('depositFlatFeeUnder100', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color" />
+                    <input type="number" inputMode="decimal" value={form.depositFlatFeeUnder100} onChange={e => setNumber('depositFlatFeeUnder100', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color min-h-[46px] text-white" />
                 </label>
                 <label className="text-sm text-white/80">Deposit Percent (&gt;= $100)
-                    <input value={form.depositPercentAbove100} onChange={e => setNumber('depositPercentAbove100', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color" />
+                    <input type="number" inputMode="decimal" value={form.depositPercentAbove100} onChange={e => setNumber('depositPercentAbove100', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color min-h-[46px] text-white" />
                 </label>
                 <label className="text-sm text-white/80">Default USDT Network
-                    <select value={form.defaultUsdtNetwork} onChange={e => setForm(prev => ({ ...prev, defaultUsdtNetwork: e.target.value }))} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color">
+                    <select value={form.defaultUsdtNetwork} onChange={e => setForm(prev => ({ ...prev, defaultUsdtNetwork: e.target.value }))} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color min-h-[46px] text-white">
                         <option value="BEP20">BEP20</option>
                         <option value="TRC20">TRC20</option>
                         <option value="ERC20">ERC20</option>
@@ -1136,13 +1168,13 @@ const SettingsPanel: React.FC = () => {
                 </label>
                 <label className="text-sm text-white/80">Required Confirmations (BTC/LTC/USDT)
                     <div className="grid grid-cols-3 gap-2 mt-1">
-                        <input value={form.requiredConfirmationsBtc} onChange={e => setNumber('requiredConfirmationsBtc', e.target.value)} className="bg-background p-3 rounded-xl border border-border-color" />
-                        <input value={form.requiredConfirmationsLtc} onChange={e => setNumber('requiredConfirmationsLtc', e.target.value)} className="bg-background p-3 rounded-xl border border-border-color" />
-                        <input value={form.requiredConfirmationsUsdt} onChange={e => setNumber('requiredConfirmationsUsdt', e.target.value)} className="bg-background p-3 rounded-xl border border-border-color" />
+                        <input type="number" inputMode="numeric" value={form.requiredConfirmationsBtc} onChange={e => setNumber('requiredConfirmationsBtc', e.target.value)} className="bg-background p-3 rounded-xl border border-border-color min-h-[46px] text-white" />
+                        <input type="number" inputMode="numeric" value={form.requiredConfirmationsLtc} onChange={e => setNumber('requiredConfirmationsLtc', e.target.value)} className="bg-background p-3 rounded-xl border border-border-color min-h-[46px] text-white" />
+                        <input type="number" inputMode="numeric" value={form.requiredConfirmationsUsdt} onChange={e => setNumber('requiredConfirmationsUsdt', e.target.value)} className="bg-background p-3 rounded-xl border border-border-color min-h-[46px] text-white" />
                     </div>
                 </label>
             </div>
-            <button disabled={saving} onClick={save} className="bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold py-3 px-5 rounded-xl disabled:opacity-50">
+            <button disabled={saving} onClick={save} className="bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold py-3 px-5 rounded-xl disabled:opacity-50 min-h-[46px] touch-manipulation active:scale-[0.99]">
                 {saving ? 'Saving...' : 'Save Escrow Settings'}
             </button>
         </div>

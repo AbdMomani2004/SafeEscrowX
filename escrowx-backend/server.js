@@ -753,7 +753,14 @@ app.put('/api/trades/:id/cancel', async (req, res) => {
             ? cancellation_reason.trim()
             : 'Cancelled by user';
 
-        const updatedTrade = await trades.cancelTrade(id, cancelled_by, normalizedReason);
+        let updatedTrade = null;
+        try {
+            updatedTrade = await trades.cancelTrade(id, cancelled_by, normalizedReason);
+        } catch (cancelError) {
+            // Backward-compatible fallback for older DB schemas missing cancellation fields.
+            console.warn('cancelTrade with reason fields failed, falling back to status-only cancel:', cancelError?.message || cancelError);
+            updatedTrade = await trades.updateStatus(id, 'CANCELLED');
+        }
         if (!updatedTrade) return res.status(404).json({ ok: false, error: 'Trade not found' });
         
         return res.json({ ok: true, trade: updatedTrade });
