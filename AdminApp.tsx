@@ -584,25 +584,53 @@ const UsersTable: React.FC = () => {
 };
 
 const DisputesView: React.FC = () => {
-    const { trades } = useTrades();
-    const disputes = trades.filter(t => t.status === EscrowStatus.DISPUTE);
+    const [disputes, setDisputes] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const loadDisputes = async () => {
+        try {
+            setLoading(true);
+            const resp = await fetch(API_ENDPOINTS.disputes);
+            const json = await resp.json().catch(() => ({}));
+            if (!resp.ok || !json.ok) {
+                throw new Error(json.error || `HTTP ${resp.status}`);
+            }
+            setDisputes(Array.isArray(json.disputes) ? json.disputes : []);
+        } catch (error) {
+            console.error('Failed to load disputes:', error);
+            setDisputes([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadDisputes();
+    }, []);
+
     return (
         <div className="space-y-3">
-            {disputes.map(t => (
-                <div key={t.id} className="bg-surface p-4 rounded-2xl border border-border-color">
+            {loading && <div className="text-text-body">Loading disputes...</div>}
+            {!loading && disputes.map((d) => (
+                <div key={d.id} className="bg-surface p-4 rounded-2xl border border-border-color">
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="font-semibold">{t.description}</p>
-                            <p className="text-xs text-text-body">Buyer: {t.buyer.username} • Seller: {t.seller.username}</p>
+                            <p className="font-semibold">Trade #{d.tradeId}</p>
+                            <p className="text-xs text-text-body">
+                                Amount: {Number(d.amount || 0).toFixed(2)} {d.currency || 'USDT'}
+                            </p>
+                            <p className="text-xs text-text-body">
+                                Opened: {d.createdAt ? new Date(d.createdAt).toLocaleString() : 'Unknown'}
+                            </p>
                         </div>
-                        <StatusBadge status={t.status} />
+                        <StatusBadge status={EscrowStatus.DISPUTE} />
                     </div>
                     <div className="mt-2 text-sm text-text-body">
-                        {(t.disputeMessages || []).length} dispute messages
+                        {(d.disputeMessages || []).length} dispute messages
                     </div>
                 </div>
             ))}
-            {disputes.length === 0 && <div className="text-text-body">No open disputes.</div>}
+            {!loading && disputes.length === 0 && <div className="text-text-body">No open disputes.</div>}
         </div>
     );
 };

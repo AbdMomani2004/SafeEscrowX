@@ -1278,8 +1278,10 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
     const [submittedReview, setSubmittedReview] = useState(false);
     const [liveMessages, setLiveMessages] = useState<Message[]>([]);
     const [isCancellingTrade, setIsCancellingTrade] = useState(false);
+    const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const seenIncomingRef = useRef<Set<string>>(new Set());
+    const attachmentInputRef = useRef<HTMLInputElement>(null);
 
     const sameMessageSet = (a: Message[], b: Message[]) => {
         if (a.length !== b.length) return false;
@@ -1379,6 +1381,47 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
         }
         setMessage('');
         tg?.HapticFeedback.impactOccurred('light');
+    };
+
+    const sendAttachment = async (file: File) => {
+        if (!activeThreadId || !file) return;
+        setIsUploadingAttachment(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const uploadResp = await fetch(API_ENDPOINTS.upload, { method: 'POST', body: formData });
+            const uploadJson = await uploadResp.json().catch(() => ({}));
+            if (!uploadResp.ok || !uploadJson.ok || !uploadJson.url) {
+                throw new Error(uploadJson.error || `Upload failed (HTTP ${uploadResp.status})`);
+            }
+
+            const mediaUrl = String(uploadJson.url);
+            const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
+            const attachmentMessage: Message = {
+                id: `m${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                senderId: currentUser.id,
+                type: MessageType.EVIDENCE,
+                content: file.name || 'Attachment',
+                timestamp: new Date(),
+                media: { type: mediaType as 'image' | 'video', url: mediaUrl }
+            };
+            const saved = await addMessage(activeThreadId, attachmentMessage);
+            if (!saved) {
+                throw new Error('Message persistence failed');
+            }
+            const refreshed = await loadMessages(activeThreadId);
+            if (refreshed.length) {
+                setLiveMessages(refreshed);
+            } else {
+                setLiveMessages((prev) => [...prev, attachmentMessage]);
+            }
+            showToast('Attachment sent successfully.');
+        } catch (error: any) {
+            showToast(`Attachment failed: ${error?.message || 'Unknown error'}`);
+        } finally {
+            setIsUploadingAttachment(false);
+            if (attachmentInputRef.current) attachmentInputRef.current.value = '';
+        }
     };
 
     const handleAction = async (action: 'approve' | 'decline' | 'deliver') => {
@@ -1740,6 +1783,24 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                          </div>
                      )}
                     <div className="flex items-center space-x-2">
+                        <input
+                            ref={attachmentInputRef}
+                            type="file"
+                            accept="image/*,video/*"
+                            className="hidden"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) sendAttachment(file);
+                            }}
+                        />
+                        <button
+                            onClick={() => attachmentInputRef.current?.click()}
+                            disabled={isUploadingAttachment}
+                            className="bg-surface-alt text-white p-3 rounded-full hover:bg-surface transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                            title="Send image/video"
+                        >
+                            <ICONS.add className="w-5 h-5" />
+                        </button>
                         <input 
                             type="text" 
                             value={message}
@@ -1752,10 +1813,13 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                             placeholder="Type a message..." 
                             className="flex-grow bg-background p-3 rounded-2xl text-white focus:outline-none focus:ring-2 focus:ring-primary border border-transparent focus:border-primary"
                         />
-                        <button onClick={sendMessage} className="bg-primary text-white p-3 rounded-full hover:bg-primary-hover transition-colors">
+                        <button onClick={sendMessage} disabled={isUploadingAttachment} className="bg-primary text-white p-3 rounded-full hover:bg-primary-hover transition-colors disabled:opacity-60">
                             <ICONS.send className="w-6 h-6" />
                         </button>
                     </div>
+                    {isUploadingAttachment && (
+                        <p className="text-xs text-text-body mt-2">Uploading attachment...</p>
+                    )}
                 </div>
             )}
         </div>

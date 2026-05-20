@@ -386,6 +386,30 @@ const sendAdminBotNotification = async (title, lines = []) => {
     }
 };
 
+const sendTelegramBotMessage = async (token, chatId, message) => {
+    if (!token || !chatId || !message) return false;
+    try {
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: String(chatId), text: String(message) })
+        });
+        return true;
+    } catch (error) {
+        console.error('Failed to send telegram bot message:', error?.message || error);
+        return false;
+    }
+};
+
+const sendUserBotNotification = async (userId, title, lines = []) => {
+    const token = process.env.MAIN_BOT_TOKEN || process.env.BOT_TOKEN;
+    if (!token || !userId) return false;
+    const chatId = String(userId).trim();
+    if (!/^\d+$/.test(chatId)) return false;
+    const message = [title, ...lines].join('\n');
+    return sendTelegramBotMessage(token, chatId, message);
+};
+
 const updateWithdrawalStatus = async (id, status, { txId = null, reason = null, proofUrl = null, notifiedUser = null } = {}) => {
     if (USE_POSTGRESQL) {
         return withdrawals.updateStatus(id, status, new Date().toISOString(), reason, txId, proofUrl, notifiedUser);
@@ -535,6 +559,14 @@ app.post('/api/users/moderate', async (req, res) => {
         
         const updatedUser = await users.updateModeration(userId, updateData);
         if (!updatedUser) return res.status(404).json({ ok: false, error: 'User not found' });
+        const moderationLines = [];
+        if (updateData.verified !== undefined) {
+            moderationLines.push(`Verification: ${updateData.verified ? 'approved' : 'removed'}`);
+        }
+        if (updateData.banned !== undefined) {
+            moderationLines.push(`Account status: ${updateData.banned ? 'restricted' : 'active'}`);
+        }
+        await sendUserBotNotification(userId, 'Account update', moderationLines);
         return res.json({ ok: true, user: updatedUser });
     } catch (e) {
         console.error('Error in users/moderate:', e);
@@ -834,6 +866,18 @@ app.post('/api/trades/:id/verify-payment', async (req, res) => {
                 `Amount: ${providedAmount} ${currency}`,
                 `Escrow funded and awaiting delivery`
             ]);
+            const { buyerId, sellerId } = getTradePartyIds(updatedTrade);
+            await Promise.all([
+                sendUserBotNotification(buyerId, 'Deposit confirmed', [
+                    `Trade: ${id}`,
+                    `Amount: ${providedAmount} ${currency}`,
+                    'Escrow is now active.'
+                ]),
+                sendUserBotNotification(sellerId, 'Buyer deposit confirmed', [
+                    `Trade: ${id}`,
+                    'Escrow is now funded.'
+                ])
+            ]);
             
             return res.json({
                 ok: true,
@@ -1080,6 +1124,11 @@ app.post('/api/withdrawals/request', async (req, res) => {
             `Amount: ${numAmount} ${currency}`,
             `Network: ${String(network).toUpperCase()}`
         ]);
+        await sendUserBotNotification(String(userId), 'Withdrawal request submitted', [
+            `Amount: ${numAmount} ${currency}`,
+            `Network: ${String(network).toUpperCase()}`,
+            'Status: PENDING'
+        ]);
         return res.json({ ok: true, withdrawal: normalizeWithdrawal(createdWithdrawal) });
     } catch (e) {
         return res.status(500).json({ ok: false, error: 'Failed to create withdrawal', details: e.message });
@@ -1104,6 +1153,10 @@ app.post('/api/withdrawals/approve', async (req, res) => {
             notifiedUser: true
         });
         if (!updatedWithdrawal) return res.status(404).json({ ok: false, error: 'Withdrawal not found' });
+        await sendUserBotNotification(String(updatedWithdrawal.user_id || updatedWithdrawal.userId), 'Withdrawal approved', [
+            `Request: ${id}`,
+            txId ? `TxID: ${txId}` : 'Transaction broadcasted by admin.'
+        ]);
         return res.json({ ok: true, withdrawal: normalizeWithdrawal(updatedWithdrawal), userNotification: 'Withdrawal sent and user notified.' });
     } catch (e) {
         return res.status(500).json({ ok: false, error: 'Failed to approve withdrawal', details: e.message });
@@ -1115,6 +1168,10 @@ app.post('/api/withdrawals/reject', async (req, res) => {
         const { id, reason } = req.body || {};
         const updatedWithdrawal = await updateWithdrawalStatus(id, 'REJECTED', { reason: reason || null });
         if (!updatedWithdrawal) return res.status(404).json({ ok: false, error: 'Withdrawal not found' });
+        await sendUserBotNotification(String(updatedWithdrawal.user_id || updatedWithdrawal.userId), 'Withdrawal rejected', [
+            `Request: ${id}`,
+            reason ? `Reason: ${reason}` : 'Please contact support for details.'
+        ]);
         return res.json({ ok: true, withdrawal: normalizeWithdrawal(updatedWithdrawal) });
     } catch (e) {
         return res.status(500).json({ ok: false, error: 'Failed to reject withdrawal', details: e.message });
@@ -1332,6 +1389,17 @@ app.post('/api/disputes', async (req, res) => {
             `Reason: ${reason}`,
             `Opened by: ${openerId}`
         ]);
+        const { buyerId, sellerId } = getTradePartyIds(updatedTrade);
+        await Promise.all([
+            sendUserBotNotification(buyerId, 'Dispute update', [
+                `Trade: ${tradeId}`,
+                'Status changed to DISPUTE.'
+            ]),
+            sendUserBotNotification(sellerId, 'Dispute update', [
+                `Trade: ${tradeId}`,
+                'Status changed to DISPUTE.'
+            ])
+        ]);
 
         const dispute = {
             id: `dispute_${Date.now()}`,
@@ -1364,12 +1432,23 @@ if (serveStatic) {
 app.post('/api/messages/send', async (req, res) => {
     try {
         const { id, trade_id, sender_id, type, content, media_url } = req.body || {};
-        if (!id || !trade_id || !sender_id || !content) {
+        if (!id || !trade_id || !sender_id || (!content && !media_url)) {
             return res.status(400).json({ ok: false, error: 'Missing required fields' });
         }
         
-        const messageData = { id, trade_id, sender_id, type: type || 'TEXT', content, media_url };
+        const messageData = { id, trade_id, sender_id, type: type || 'TEXT', content: content || '[Attachment]', media_url };
         const createdMessage = await messages.create(messageData);
+        const trade = await trades.getById(trade_id);
+        if (trade) {
+            const { buyerId, sellerId } = getTradePartyIds(trade);
+            const recipientId = String(sender_id) === buyerId ? sellerId : buyerId;
+            if (recipientId && recipientId !== String(sender_id)) {
+                await sendUserBotNotification(recipientId, 'New message', [
+                    `Trade: ${trade_id}`,
+                    media_url ? 'Attachment received.' : String(content || '').slice(0, 120)
+                ]);
+            }
+        }
         return res.json({ ok: true, message: createdMessage });
     } catch (e) {
         console.error('Error sending message:', e);
