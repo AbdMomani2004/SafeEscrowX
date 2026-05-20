@@ -28,7 +28,7 @@ const getDepositFee = (amount: number): number => {
 };
 
 const NETWORKS_BY_CURRENCY: Record<Currency, string[]> = {
-    [Currency.USDT]: ['TRC20', 'ERC20', 'BEP20'],
+    [Currency.USDT]: ['BEP20', 'TRC20', 'ERC20'],
     [Currency.BTC]: ['BTC'],
     [Currency.LTC]: ['LTC']
 };
@@ -1028,7 +1028,7 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
 }
 
 export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showToast' | 'selectedTradeId'>> = ({ setCurrentView, showToast, selectedTradeId }) => {
-    const { trades, updateTradeStatus } = useTrades();
+    const { trades, updateTradeStatus, addMessage } = useTrades();
     const trade = trades.find(t => t.id === selectedTradeId);
     const [paid, setPaid] = useState(false);
     
@@ -1133,13 +1133,20 @@ export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showT
             if (result.ok && result.verified) {
                 setVerificationStatus('verified');
                 setVerificationMessage('Payment verified on backend. Activating escrow now...');
-        setPaid(true);
-        tg?.HapticFeedback.notificationOccurred('success');
+                setPaid(true);
+                tg?.HapticFeedback.notificationOccurred('success');
                 showToast("Payment verified! Trade is now active.");
-             setTimeout(() => {
+                await addMessage(trade.id, {
+                    id: `m${Date.now()}`,
+                    senderId: 'system',
+                    type: MessageType.SYSTEM,
+                    content: `Payment confirmed (${trade.currency}). Escrow is now funded and active.`,
+                    timestamp: new Date(),
+                });
+                setTimeout(() => {
                     updateTradeStatus(trade.id, EscrowStatus.HELD);
-                setCurrentView('tradeRoom', trade.id);
-            }, 2000);
+                    setCurrentView('tradeRoom', trade.id);
+                }, 1200);
             } else {
                 setVerificationStatus('failed');
                 const backendMessage = result?.error || result?.message || "Payment not found. Please ensure you've sent the exact amount to the address.";
@@ -1162,7 +1169,7 @@ export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showT
     const selectedRate = usdRates[trade.currency] || 0;
     const totalInCurrency = trade.currency === Currency.USDT ? totalUsd : (selectedRate > 0 ? totalUsd / selectedRate : 0);
     const networkByCurrency: Record<Currency, string> = {
-        [Currency.USDT]: 'TRC20',
+        [Currency.USDT]: 'BEP20',
         [Currency.BTC]: 'BTC',
         [Currency.LTC]: 'LTC'
     };
@@ -1632,9 +1639,9 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                         </div>
                     )}
                     
-                    {/* Cancel Trade Button for both parties */}
-                    {trade && (trade.status === EscrowStatus.HELD || trade.status === EscrowStatus.IN_PROGRESS) && (
-                        <div className="flex justify-center mb-2">
+                    {/* Cancel/Dispute actions for both parties */}
+                    {trade && trade.status !== EscrowStatus.COMPLETED && trade.status !== EscrowStatus.CANCELLED && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
                             <button 
                                 onClick={() => {
                                     const reason = prompt("Reason for cancellation:");
@@ -1659,6 +1666,38 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                                 <ICONS.x className="w-4 h-4"/>
                                 <span>Cancel Trade</span>
                             </button>
+                            {trade.status !== EscrowStatus.DISPUTE && (
+                                <button
+                                    onClick={async () => {
+                                        const reason = prompt("Dispute reason (required):");
+                                        if (!reason?.trim()) return;
+                                        try {
+                                            const response = await fetch(API_ENDPOINTS.disputes, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({
+                                                    tradeId: trade.id,
+                                                    userId: currentUser.id,
+                                                    reason: reason.trim(),
+                                                    description: reason.trim()
+                                                })
+                                            });
+                                            const result = await response.json().catch(() => ({}));
+                                            if (!response.ok || !result.ok) {
+                                                throw new Error(result.error || `HTTP ${response.status}`);
+                                            }
+                                            updateTradeStatus(trade.id, EscrowStatus.DISPUTE);
+                                            showToast("Dispute submitted. Admin has been notified.");
+                                        } catch (error) {
+                                            showToast("Failed to submit dispute. Please try again.");
+                                        }
+                                    }}
+                                    className="bg-danger text-white font-bold py-2 px-4 rounded-xl flex items-center justify-center space-x-2"
+                                >
+                                    <ICONS.dispute className="w-4 h-4"/>
+                                    <span>Report Dispute</span>
+                                </button>
+                            )}
                         </div>
                     )}
                      {trade && !isBuyer && (trade.status === EscrowStatus.HELD || trade.status === EscrowStatus.IN_PROGRESS) && (

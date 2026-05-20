@@ -576,7 +576,7 @@ const DisputesView: React.FC = () => {
 };
 
 const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
-    const [tab, setTab] = useState<'trades' | 'users' | 'disputes' | 'services' | 'payouts'>('trades');
+    const [tab, setTab] = useState<'trades' | 'users' | 'disputes' | 'services' | 'payouts' | 'settings'>('trades');
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isDesktop, setIsDesktop] = useState<boolean>(() => {
         if (typeof window === 'undefined') return true;
@@ -663,6 +663,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         { id: 'services', label: 'Services', icon: Icons.services, count: pendingServicesCount },
         { id: 'disputes', label: 'Disputes', icon: Icons.disputes, count: pendingTradesCount },
         { id: 'payouts', label: 'Payouts', icon: Icons.payouts, count: 0 },
+        { id: 'settings', label: 'Settings', icon: Icons.filter, count: 0 },
     ];
 
     return (
@@ -751,14 +752,16 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                  tab === 'users' ? 'User Management' : 
                                  tab === 'services' ? 'Service Management' : 
                                  tab === 'disputes' ? 'Dispute Resolution' : 
-                                 'Withdrawal Management'}
+                                 tab === 'payouts' ? 'Withdrawal Management' :
+                                 'Escrow Settings'}
                             </h2>
                             <p className="text-white/60 mt-1 text-xs sm:text-sm">
                                 {tab === 'trades' ? 'Monitor and manage all escrow transactions' : 
                                  tab === 'users' ? 'Manage user accounts and verification status' : 
                                  tab === 'services' ? 'Approve and manage marketplace services' : 
                                  tab === 'disputes' ? 'Resolve trade disputes and conflicts' : 
-                                 'Process withdrawal requests and payments'}
+                                 tab === 'payouts' ? 'Process withdrawal requests and payments' :
+                                 'Control fees, limits, networks, and confirmation requirements'}
                             </p>
             </div>
 
@@ -796,12 +799,13 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                             ))}
                         </div>
                     </div>
-                    <SectionCard title={`${tab === 'trades' ? 'All Trades' : tab === 'users' ? 'All Users' : tab==='services' ? 'All Services' : tab==='payouts' ? 'Withdrawal Requests' : 'Open Disputes'}`}>
+                    <SectionCard title={`${tab === 'trades' ? 'All Trades' : tab === 'users' ? 'All Users' : tab==='services' ? 'All Services' : tab==='payouts' ? 'Withdrawal Requests' : tab==='disputes' ? 'Open Disputes' : 'Escrow Configuration'}`}>
                 {tab === 'trades' && <TradesTable />}
                 {tab === 'users' && <UsersTable />}
                 {tab === 'services' && <ServicesTable />}
                 {tab === 'disputes' && <DisputesView />}
                 {tab === 'payouts' && <PayoutsTable />}
+                {tab === 'settings' && <SettingsPanel />}
             </SectionCard>
                 </main>
             </div>
@@ -1039,6 +1043,108 @@ const ServicesTable: React.FC = () => {
                     </div>
                 )}
             </div>
+        </div>
+    );
+};
+
+const SettingsPanel: React.FC = () => {
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [form, setForm] = useState({
+        minDepositUsd: 1,
+        maxTradeUsd: 2500,
+        minWithdrawalUsd: 5,
+        withdrawalFeeUsd: 1,
+        depositFlatFeeUnder100: 1,
+        depositPercentAbove100: 0.01,
+        defaultUsdtNetwork: 'BEP20',
+        requiredConfirmationsBtc: 1,
+        requiredConfirmationsLtc: 1,
+        requiredConfirmationsUsdt: 1
+    });
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const resp = await fetch(API_ENDPOINTS.adminSettings);
+                const json = await resp.json();
+                if (json.ok && json.settings) {
+                    setForm(prev => ({ ...prev, ...json.settings }));
+                }
+            } finally {
+                setLoading(false);
+            }
+        })();
+    }, []);
+
+    const setNumber = (key: keyof typeof form, value: string) => {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return;
+        setForm(prev => ({ ...prev, [key]: numeric }));
+    };
+
+    const save = async () => {
+        setSaving(true);
+        try {
+            const resp = await fetch(API_ENDPOINTS.adminSettings, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(form)
+            });
+            const json = await resp.json().catch(() => ({}));
+            if (!resp.ok || !json.ok) {
+                throw new Error(json.error || `HTTP ${resp.status}`);
+            }
+            setForm(prev => ({ ...prev, ...(json.settings || {}) }));
+            alert('Escrow settings updated successfully.');
+        } catch (error: any) {
+            alert(`Failed to save settings: ${error?.message || 'Unknown error'}`);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) return <div className="text-white/70">Loading settings...</div>;
+
+    return (
+        <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="text-sm text-white/80">Min Trade (USD)
+                    <input value={form.minDepositUsd} onChange={e => setNumber('minDepositUsd', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color" />
+                </label>
+                <label className="text-sm text-white/80">Max Trade (USD)
+                    <input value={form.maxTradeUsd} onChange={e => setNumber('maxTradeUsd', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color" />
+                </label>
+                <label className="text-sm text-white/80">Min Withdrawal (USD)
+                    <input value={form.minWithdrawalUsd} onChange={e => setNumber('minWithdrawalUsd', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color" />
+                </label>
+                <label className="text-sm text-white/80">Withdrawal Fee (USD)
+                    <input value={form.withdrawalFeeUsd} onChange={e => setNumber('withdrawalFeeUsd', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color" />
+                </label>
+                <label className="text-sm text-white/80">Flat Deposit Fee (&lt; $100)
+                    <input value={form.depositFlatFeeUnder100} onChange={e => setNumber('depositFlatFeeUnder100', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color" />
+                </label>
+                <label className="text-sm text-white/80">Deposit Percent (&gt;= $100)
+                    <input value={form.depositPercentAbove100} onChange={e => setNumber('depositPercentAbove100', e.target.value)} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color" />
+                </label>
+                <label className="text-sm text-white/80">Default USDT Network
+                    <select value={form.defaultUsdtNetwork} onChange={e => setForm(prev => ({ ...prev, defaultUsdtNetwork: e.target.value }))} className="mt-1 w-full bg-background p-3 rounded-xl border border-border-color">
+                        <option value="BEP20">BEP20</option>
+                        <option value="TRC20">TRC20</option>
+                        <option value="ERC20">ERC20</option>
+                    </select>
+                </label>
+                <label className="text-sm text-white/80">Required Confirmations (BTC/LTC/USDT)
+                    <div className="grid grid-cols-3 gap-2 mt-1">
+                        <input value={form.requiredConfirmationsBtc} onChange={e => setNumber('requiredConfirmationsBtc', e.target.value)} className="bg-background p-3 rounded-xl border border-border-color" />
+                        <input value={form.requiredConfirmationsLtc} onChange={e => setNumber('requiredConfirmationsLtc', e.target.value)} className="bg-background p-3 rounded-xl border border-border-color" />
+                        <input value={form.requiredConfirmationsUsdt} onChange={e => setNumber('requiredConfirmationsUsdt', e.target.value)} className="bg-background p-3 rounded-xl border border-border-color" />
+                    </div>
+                </label>
+            </div>
+            <button disabled={saving} onClick={save} className="bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold py-3 px-5 rounded-xl disabled:opacity-50">
+                {saving ? 'Saving...' : 'Save Escrow Settings'}
+            </button>
         </div>
     );
 };

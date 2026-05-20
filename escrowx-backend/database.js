@@ -140,6 +140,15 @@ const createTables = () => {
             FOREIGN KEY (sender_id) REFERENCES users(id)
         )
     `);
+
+    // App settings table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
 };
 
 // Initialize database
@@ -579,6 +588,35 @@ export const disputeMessages = {
     getByTradeId: (tradeId) => {
         const stmt = db.prepare('SELECT * FROM dispute_messages WHERE trade_id = ? ORDER BY created_at ASC');
         return stmt.all(tradeId);
+    }
+};
+
+export const settings = {
+    getAll: () => {
+        const stmt = db.prepare('SELECT key, value FROM app_settings');
+        return stmt.all();
+    },
+
+    getByKey: (key) => {
+        const stmt = db.prepare('SELECT key, value FROM app_settings WHERE key = ?');
+        return stmt.get(key) || null;
+    },
+
+    setMany: (entries = {}) => {
+        const stmt = db.prepare(`
+            INSERT INTO app_settings (key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = CURRENT_TIMESTAMP
+        `);
+        const tx = db.transaction((inputEntries) => {
+            Object.entries(inputEntries).forEach(([key, value]) => {
+                stmt.run(String(key), JSON.stringify(value));
+            });
+        });
+        tx(entries);
+        return settings.getAll();
     }
 };
 

@@ -175,6 +175,15 @@ export const initDatabase = async () => {
       )
     `);
 
+    // App settings table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key VARCHAR(255) PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Add migration for new columns
     try {
       await pool.query(`
@@ -661,6 +670,33 @@ export const disputeMessages = {
     const query = 'SELECT * FROM dispute_messages WHERE trade_id = $1 ORDER BY created_at ASC';
     const result = await pool.query(query, [tradeId]);
     return result.rows;
+  }
+};
+
+export const settings = {
+  getAll: async () => {
+    const result = await pool.query('SELECT key, value FROM app_settings');
+    return result.rows;
+  },
+
+  getByKey: async (key) => {
+    const result = await pool.query('SELECT key, value FROM app_settings WHERE key = $1', [key]);
+    return result.rows[0] || null;
+  },
+
+  setMany: async (entries = {}) => {
+    const keys = Object.keys(entries);
+    for (const key of keys) {
+      const value = JSON.stringify(entries[key]);
+      await pool.query(`
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES ($1, $2, CURRENT_TIMESTAMP)
+        ON CONFLICT (key) DO UPDATE SET
+          value = EXCLUDED.value,
+          updated_at = CURRENT_TIMESTAMP
+      `, [String(key), value]);
+    }
+    return settings.getAll();
   }
 };
 

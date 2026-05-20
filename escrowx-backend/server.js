@@ -33,20 +33,28 @@ console.log('🔍 Environment check:', {
 
 // Choose database: SQLite or PostgreSQL (PostgreSQL is default for production)
 const USE_POSTGRESQL = process.env.USE_POSTGRESQL === 'true' || process.env.NODE_ENV === 'production';
-const PAYMENT_RULES = {
-    MIN_DEPOSIT_USD: 1,
-    MAX_TRADE_USD: 2500,
-    MIN_WITHDRAWAL_USD: 5,
-    WITHDRAWAL_FEE_USD: 1
+const DEFAULT_APP_SETTINGS = {
+    minDepositUsd: 1,
+    maxTradeUsd: 2500,
+    minWithdrawalUsd: 5,
+    withdrawalFeeUsd: 1,
+    depositFlatFeeUnder100: 1,
+    depositPercentAbove100: 0.01,
+    defaultUsdtNetwork: 'BEP20',
+    requiredConfirmationsBtc: 1,
+    requiredConfirmationsLtc: 1,
+    requiredConfirmationsUsdt: 1
 };
+let appSettings = { ...DEFAULT_APP_SETTINGS };
+
 const WITHDRAWAL_NETWORKS = {
     BTC: ['BTC'],
     LTC: ['LTC'],
-    USDT: ['TRC20', 'ERC20', 'BEP20']
+    USDT: ['BEP20', 'TRC20', 'ERC20']
 };
 const processedPaymentHashes = new Map();
 
-let users, services, trades, withdrawals, balances, reviews, messages, disputeMessages;
+let users, services, trades, withdrawals, balances, reviews, messages, disputeMessages, settingsStore;
 
 if (USE_POSTGRESQL) {
   const db = await import('./database-postgres.js');
@@ -58,6 +66,7 @@ if (USE_POSTGRESQL) {
   reviews = db.reviews;
   messages = db.messages;
   disputeMessages = db.disputeMessages;
+  settingsStore = db.settings;
   
   // Initialize PostgreSQL database
   await db.initDatabase();
@@ -106,6 +115,7 @@ if (USE_POSTGRESQL) {
   reviews = db.reviews;
   messages = db.messages;
   disputeMessages = db.disputeMessages;
+  settingsStore = db.settings;
   console.log('📁 Using SQLite database');
 }
 
@@ -288,14 +298,62 @@ const toNumber = (value, fallback = 0) => {
     return Number.isFinite(n) ? n : fallback;
 };
 
+const toPositiveNumber = (value, fallback) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
+};
+
+const normalizeNetwork = (value) => String(value || '').trim().toUpperCase();
+
+const loadAppSettings = async () => {
+    if (!settingsStore || typeof settingsStore.getAll !== 'function') {
+        appSettings = { ...DEFAULT_APP_SETTINGS };
+        return appSettings;
+    }
+    try {
+        const rows = await settingsStore.getAll();
+        const merged = { ...DEFAULT_APP_SETTINGS };
+        for (const row of rows || []) {
+            const key = row.key;
+            if (!Object.prototype.hasOwnProperty.call(DEFAULT_APP_SETTINGS, key)) continue;
+            let parsedValue = row.value;
+            try {
+                parsedValue = JSON.parse(row.value);
+            } catch (_) {}
+            if (typeof DEFAULT_APP_SETTINGS[key] === 'number') {
+                merged[key] = toPositiveNumber(parsedValue, DEFAULT_APP_SETTINGS[key]);
+            } else if (typeof DEFAULT_APP_SETTINGS[key] === 'string') {
+                merged[key] = String(parsedValue || DEFAULT_APP_SETTINGS[key]);
+            }
+        }
+        merged.defaultUsdtNetwork = normalizeNetwork(merged.defaultUsdtNetwork) || DEFAULT_APP_SETTINGS.defaultUsdtNetwork;
+        appSettings = merged;
+        return appSettings;
+    } catch (error) {
+        console.error('Failed to load app settings:', error.message);
+        appSettings = { ...DEFAULT_APP_SETTINGS };
+        return appSettings;
+    }
+};
+
+const getPaymentRules = () => ({
+    MIN_DEPOSIT_USD: appSettings.minDepositUsd,
+    MAX_TRADE_USD: appSettings.maxTradeUsd,
+    MIN_WITHDRAWAL_USD: appSettings.minWithdrawalUsd,
+    WITHDRAWAL_FEE_USD: appSettings.withdrawalFeeUsd
+});
+
 const computeDepositFee = (amount) => {
+    const flatFee = toPositiveNumber(appSettings.depositFlatFeeUnder100, DEFAULT_APP_SETTINGS.depositFlatFeeUnder100);
+    const percentFee = toPositiveNumber(appSettings.depositPercentAbove100, DEFAULT_APP_SETTINGS.depositPercentAbove100);
     if (amount <= 0) return 0;
-    return amount < 100 ? 1 : amount * 0.01;
+    return amount < 100 ? flatFee : amount * percentFee;
 };
 
 const normalizeWithdrawal = (row = {}) => {
+    const rules = getPaymentRules();
     const amount = toNumber(row.amount);
-    const fee = toNumber(row.fee, PAYMENT_RULES.WITHDRAWAL_FEE_USD);
+    const fee = toNumber(row.fee, rules.WITHDRAWAL_FEE_USD);
     return {
         ...row,
         userId: String(row.user_id ?? row.userId ?? ''),
@@ -380,6 +438,7 @@ const ensureSystemUsers = async () => {
 };
 
 await ensureSystemUsers();
+await loadAppSettings();
 
 app.post('/api/verify', (req, res) => {
     try {
@@ -567,6 +626,7 @@ app.get('/api/trades', async (_req, res) => {
 
 app.post('/api/trades', async (req, res) => {
     try {
+        const rules = getPaymentRules();
         console.log('📥 Creating trade with data:', req.body);
         const { id, buyer_id, seller_id, service_id, amount, currency, description } = req.body || {};
         if (!id || !buyer_id || !seller_id || !amount || !currency) {
@@ -574,11 +634,11 @@ app.post('/api/trades', async (req, res) => {
             return res.status(400).json({ ok: false, error: 'Missing required fields' });
         }
         const amountUsd = Number(amount);
-        if (!Number.isFinite(amountUsd) || amountUsd < PAYMENT_RULES.MIN_DEPOSIT_USD) {
-            return res.status(400).json({ ok: false, error: `Minimum trade amount is $${PAYMENT_RULES.MIN_DEPOSIT_USD}` });
+        if (!Number.isFinite(amountUsd) || amountUsd < rules.MIN_DEPOSIT_USD) {
+            return res.status(400).json({ ok: false, error: `Minimum trade amount is $${rules.MIN_DEPOSIT_USD}` });
         }
-        if (amountUsd > PAYMENT_RULES.MAX_TRADE_USD) {
-            return res.status(400).json({ ok: false, error: `Maximum trade amount is $${PAYMENT_RULES.MAX_TRADE_USD}` });
+        if (amountUsd > rules.MAX_TRADE_USD) {
+            return res.status(400).json({ ok: false, error: `Maximum trade amount is $${rules.MAX_TRADE_USD}` });
         }
         const tradeData = { id, buyer_id, seller_id, service_id, amount: Number(amount), currency, description };
         console.log('🔄 Calling trades.create with:', tradeData);
@@ -598,6 +658,13 @@ app.put('/api/trades/:id/status', async (req, res) => {
         if (!status) return res.status(400).json({ ok: false, error: 'Missing status' });
         const updatedTrade = await trades.updateStatus(id, status);
         if (!updatedTrade) return res.status(404).json({ ok: false, error: 'Trade not found' });
+        if (status === 'COMPLETED') {
+            await sendAdminBotNotification('Funds waiting seller transfer', [
+                `Trade: ${id}`,
+                `Status: ${status}`,
+                `Amount: ${updatedTrade.amount} ${updatedTrade.currency}`
+            ]);
+        }
         return res.json({ ok: true, trade: updatedTrade });
     } catch (e) {
         return res.status(500).json({ ok: false, error: 'Failed to update trade status' });
@@ -630,6 +697,11 @@ app.put('/api/trades/:id/deliver', async (req, res) => {
         const { delivery_message } = req.body || {};
         const updatedTrade = await trades.updateDeliveryStatus(id, 'DELIVERED', delivery_message);
         if (!updatedTrade) return res.status(404).json({ ok: false, error: 'Trade not found' });
+        await sendAdminBotNotification('Delivery submitted by seller', [
+            `Trade: ${id}`,
+            `Status: DELIVERED`,
+            `Awaiting buyer release of funds`
+        ]);
         
         return res.json({ ok: true, trade: updatedTrade });
     } catch (e) {
@@ -642,6 +714,11 @@ app.put('/api/trades/:id/approve-delivery', async (req, res) => {
         const { id } = req.params;
         const updatedTrade = await trades.approveDelivery(id);
         if (!updatedTrade) return res.status(404).json({ ok: false, error: 'Trade not found' });
+        await sendAdminBotNotification('Funds waiting seller transfer', [
+            `Trade: ${id}`,
+            `Status: COMPLETED`,
+            `Amount: ${updatedTrade.amount} ${updatedTrade.currency}`
+        ]);
         
         return res.json({ ok: true, trade: updatedTrade });
     } catch (e) {
@@ -737,6 +814,11 @@ app.post('/api/trades/:id/verify-payment', async (req, res) => {
             const updatedTrade = await trades.updateDepositStatus(id, 'APPROVED');
             if (!updatedTrade) return res.status(404).json({ ok: false, error: 'Trade not found' });
             processedPaymentHashes.set(normalizedTxHash, id);
+            await sendAdminBotNotification('Payment confirmed', [
+                `Trade: ${id}`,
+                `Amount: ${providedAmount} ${currency}`,
+                `Escrow funded and awaiting delivery`
+            ]);
             
             return res.json({
                 ok: true,
@@ -763,18 +845,59 @@ function calculateEscrowDepositTotal(amount) {
     return Number((amount + fee).toFixed(6));
 }
 
-// Deterministic verification placeholder (replaces random pass/fail behavior).
-// It enforces tx hash presence and supports explicit mock failures for testing.
+const getRequiredConfirmations = (currency) => {
+    if (currency === 'BTC') return appSettings.requiredConfirmationsBtc;
+    if (currency === 'LTC') return appSettings.requiredConfirmationsLtc;
+    return appSettings.requiredConfirmationsUsdt;
+};
+
+async function verifyViaBlockCypher({ address, amount, currency, txHash }) {
+    const chain = currency === 'BTC' ? 'btc' : currency === 'LTC' ? 'ltc' : null;
+    if (!chain) return { verified: false, message: `BlockCypher verification unsupported for ${currency}` };
+    const token = process.env.BLOCKCYPHER_TOKEN?.trim();
+    const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+    const url = `https://api.blockcypher.com/v1/${chain}/main/txs/${txHash}${tokenQuery}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+        return { verified: false, message: `Blockchain provider returned ${response.status}` };
+    }
+    const data = await response.json();
+    const confirmations = Number(data?.confirmations || 0);
+    const outputs = Array.isArray(data?.outputs) ? data.outputs : [];
+    const amountAtAddress = outputs
+        .filter((out) => Array.isArray(out.addresses) && out.addresses.includes(address))
+        .reduce((sum, out) => sum + toNumber(out.value), 0);
+    const amountInCoin = amountAtAddress / 1e8;
+    const amountMatch = Math.abs(amountInCoin - amount) <= 0.000001;
+    if (!amountMatch) {
+        return { verified: false, confirmations, message: `Amount mismatch at destination address. Expected ${amount}, got ${amountInCoin.toFixed(8)}` };
+    }
+    const required = getRequiredConfirmations(currency);
+    if (confirmations < required) {
+        return { verified: false, confirmations, message: `Waiting confirmations (${confirmations}/${required})` };
+    }
+    return { verified: true, confirmations };
+}
+
+// Hybrid verifier: live provider when enabled, deterministic sandbox fallback otherwise.
 async function verifyBlockchainPayment({ address, amount, currency, txHash }) {
     const shouldMockFail = txHash.startsWith('fail_');
     if (shouldMockFail) {
         return { verified: false, message: 'Mocked failure for QA testing' };
     }
-
     if (!address || !currency || !Number.isFinite(amount)) {
         return { verified: false, message: 'Invalid verification input' };
     }
-
+    const mode = (process.env.PAYMENT_VERIFICATION_MODE || 'sandbox').trim().toLowerCase();
+    if (mode === 'live') {
+        if (currency === 'BTC' || currency === 'LTC') {
+            return verifyViaBlockCypher({ address, amount, currency, txHash });
+        }
+        return {
+            verified: false,
+            message: `Live verification for ${currency} requires a configured provider. Set PAYMENT_VERIFICATION_MODE=sandbox for manual fallback.`
+        };
+    }
     return { verified: true, confirmations: 1 };
 }
 
@@ -877,6 +1000,7 @@ app.post('/api/services/submit', async (req, res) => {
 // ---- Withdrawals
 app.post('/api/withdrawals/request', async (req, res) => {
     try {
+        const rules = getPaymentRules();
         const { userId, amount, currency, network, address } = req.body || {};
         if (!userId || !amount || !currency || !network || !address) {
             return res.status(400).json({ ok: false, error: 'Missing required fields: userId, amount, currency, network, address' });
@@ -895,14 +1019,14 @@ app.post('/api/withdrawals/request', async (req, res) => {
         
         // Validate amount
         const numAmount = Number(amount);
-        if (isNaN(numAmount) || numAmount < PAYMENT_RULES.MIN_WITHDRAWAL_USD) {
-            return res.status(400).json({ ok: false, error: `Minimum withdrawal is $${PAYMENT_RULES.MIN_WITHDRAWAL_USD}` });
+        if (isNaN(numAmount) || numAmount < rules.MIN_WITHDRAWAL_USD) {
+            return res.status(400).json({ ok: false, error: `Minimum withdrawal is $${rules.MIN_WITHDRAWAL_USD}` });
         }
-        if (numAmount <= PAYMENT_RULES.WITHDRAWAL_FEE_USD) {
+        if (numAmount <= rules.WITHDRAWAL_FEE_USD) {
             return res.status(400).json({ ok: false, error: 'Amount must be a positive number' });
         }
 
-        const fee = PAYMENT_RULES.WITHDRAWAL_FEE_USD;
+        const fee = rules.WITHDRAWAL_FEE_USD;
         const amountAfterFee = numAmount - fee;
         
         const id = `wd_${Date.now()}`;
@@ -968,6 +1092,7 @@ app.post('/api/withdrawals/reject', async (req, res) => {
 // Admin Analytics Endpoints
 app.get('/api/admin/stats', async (_req, res) => {
     try {
+        const rules = getPaymentRules();
         const allUsers = await users.getAll();
         const allTrades = await trades.getAll();
         const allWithdrawals = await withdrawals.getAll();
@@ -977,7 +1102,7 @@ app.get('/api/admin/stats', async (_req, res) => {
         const depositRevenue = completedTrades.reduce((sum, t) => sum + computeDepositFee(toNumber(t.amount)), 0);
         const withdrawalRevenue = normalizedWithdrawals
             .filter(w => w.status === 'APPROVED')
-            .reduce((sum, w) => sum + toNumber(w.fee, PAYMENT_RULES.WITHDRAWAL_FEE_USD), 0);
+            .reduce((sum, w) => sum + toNumber(w.fee, rules.WITHDRAWAL_FEE_USD), 0);
         
         const stats = {
             totalUsers: allUsers.length,
@@ -1018,6 +1143,43 @@ app.get('/api/admin/users', async (_req, res) => {
         return res.json({ ok: true, users: allUsers });
     } catch (e) {
         return res.status(500).json({ ok: false, error: 'Failed to fetch users' });
+    }
+});
+
+app.get('/api/admin/settings', async (_req, res) => {
+    try {
+        const current = await loadAppSettings();
+        return res.json({ ok: true, settings: current });
+    } catch (e) {
+        return res.status(500).json({ ok: false, error: 'Failed to fetch settings' });
+    }
+});
+
+app.put('/api/admin/settings', async (req, res) => {
+    try {
+        const input = req.body || {};
+        const next = {
+            minDepositUsd: toPositiveNumber(input.minDepositUsd, appSettings.minDepositUsd),
+            maxTradeUsd: toPositiveNumber(input.maxTradeUsd, appSettings.maxTradeUsd),
+            minWithdrawalUsd: toPositiveNumber(input.minWithdrawalUsd, appSettings.minWithdrawalUsd),
+            withdrawalFeeUsd: toPositiveNumber(input.withdrawalFeeUsd, appSettings.withdrawalFeeUsd),
+            depositFlatFeeUnder100: toPositiveNumber(input.depositFlatFeeUnder100, appSettings.depositFlatFeeUnder100),
+            depositPercentAbove100: toPositiveNumber(input.depositPercentAbove100, appSettings.depositPercentAbove100),
+            defaultUsdtNetwork: normalizeNetwork(input.defaultUsdtNetwork || appSettings.defaultUsdtNetwork) || appSettings.defaultUsdtNetwork,
+            requiredConfirmationsBtc: Math.max(0, Math.floor(toPositiveNumber(input.requiredConfirmationsBtc, appSettings.requiredConfirmationsBtc))),
+            requiredConfirmationsLtc: Math.max(0, Math.floor(toPositiveNumber(input.requiredConfirmationsLtc, appSettings.requiredConfirmationsLtc))),
+            requiredConfirmationsUsdt: Math.max(0, Math.floor(toPositiveNumber(input.requiredConfirmationsUsdt, appSettings.requiredConfirmationsUsdt)))
+        };
+        if (next.maxTradeUsd > 0 && next.minDepositUsd > next.maxTradeUsd) {
+            return res.status(400).json({ ok: false, error: 'minDepositUsd cannot be greater than maxTradeUsd' });
+        }
+        if (settingsStore && typeof settingsStore.setMany === 'function') {
+            await settingsStore.setMany(next);
+        }
+        appSettings = { ...appSettings, ...next };
+        return res.json({ ok: true, settings: appSettings });
+    } catch (e) {
+        return res.status(500).json({ ok: false, error: 'Failed to update settings', details: e.message });
     }
 });
 

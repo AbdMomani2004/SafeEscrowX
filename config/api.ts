@@ -52,5 +52,6 @@ export const API_ENDPOINTS = {
   
   // Admin
   adminStats: `${BACKEND_URL}/api/admin/stats`,
+  adminSettings: `${BACKEND_URL}/api/admin/settings`,
   adminContactUser: `${BACKEND_URL}/api/admin/contact-user`,
 } as const;
