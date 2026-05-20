@@ -17,7 +17,7 @@ interface TradesContextType {
   isLoading: boolean;
   addTrade: (tradeData: NewTradeData) => Trade;
   updateTradeStatus: (tradeId: string, status: EscrowStatus) => void;
-  addMessage: (tradeId: string, message: Message) => Promise<void>;
+  addMessage: (tradeId: string, message: Message) => Promise<boolean>;
   addDisputeMessage: (tradeId: string, message: Message) => Promise<void>;
   loadMessages: (tradeId: string) => Promise<Message[]>;
   loadDisputeMessages: (tradeId: string) => Promise<Message[]>;
@@ -216,7 +216,7 @@ export const TradesProvider: React.FC<{ children: ReactNode }> = ({ children }) 
      addMessage(tradeId, systemMessage);
   };
 
-  const addMessage = async (tradeId: string, message: Message) => {
+  const addMessage = async (tradeId: string, message: Message): Promise<boolean> => {
     // Update local state first
     setTrades(prev =>
       prev.map(t =>
@@ -226,7 +226,7 @@ export const TradesProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     
     // Persist to backend
     try {
-      await fetch(API_ENDPOINTS.messagesSend, {
+      const response = await fetch(API_ENDPOINTS.messagesSend, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -238,8 +238,14 @@ export const TradesProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           media_url: message.media?.url
         })
       });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.ok) {
+        throw new Error(json.error || `HTTP ${response.status}`);
+      }
+      return true;
     } catch (error) {
       console.error('Failed to persist message:', error);
+      return false;
     }
   };
   

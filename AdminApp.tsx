@@ -58,7 +58,7 @@ const AdminLogin: React.FC<{ onSuccess: () => void }> = ({ onSuccess }) => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4 pt-[calc(1rem+env(safe-area-inset-top))]">
             <div className="bg-white/10 backdrop-blur-lg p-8 rounded-3xl w-full max-w-md border border-white/20 shadow-2xl">
                 <div className="text-center mb-8">
                     <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl mx-auto mb-4 flex items-center justify-center">
@@ -666,7 +666,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     ];
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex relative overflow-x-hidden">
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex relative overflow-x-hidden pt-[env(safe-area-inset-top)]">
             {!isDesktop && sidebarOpen && (
                 <button
                     onClick={() => setSidebarOpen(false)}

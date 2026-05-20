@@ -166,7 +166,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-gradient-dark font-sans flex flex-col overflow-x-hidden">
+    <div className="min-h-[100dvh] bg-gradient-dark font-sans flex flex-col overflow-x-hidden pt-[env(safe-area-inset-top)]">
       <Toast message={toastMessage} />
       {showHeader && (
         <Header title={getHeaderTitle()} onNavigate={navigateTo}>

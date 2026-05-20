@@ -66,6 +66,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [isInitializing, setIsInitializing] = useState(true);
+    const isTruthyFlag = (value: any): boolean => value === true || value === 1 || value === '1';
 
     const mapBackendUserToUser = (u: any): User => {
         return {
@@ -210,7 +211,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     const servicesJson = await servicesResp.json();
                     const allServices = Array.isArray(servicesJson.services) ? servicesJson.services : [];
                 allServices
-                    .filter((s: any) => s && s.user_id && (s.approved === true) && (s.rejected !== true))
+                    .filter((s: any) => s && s.user_id && isTruthyFlag(s.approved) && !isTruthyFlag(s.rejected))
                     .forEach((s: any) => {
                             const mapped = {
                                 id: String(s.id),
@@ -300,12 +301,12 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const tick = async () => {
             try {
-                const servicesResp = await fetch('https://escrowx-backend.onrender.com/api/services');
+                const servicesResp = await fetch(API_ENDPOINTS.services);
                 const servicesJson = await servicesResp.json();
                 const allServices = Array.isArray(servicesJson.services) ? servicesJson.services : [];
                 const map: Record<string, User['services']> = {};
                 allServices
-                    .filter((s: any) => s && s.user_id && (s.approved === true) && (s.rejected !== true))
+                    .filter((s: any) => s && s.user_id && isTruthyFlag(s.approved) && !isTruthyFlag(s.rejected))
                     .forEach((s: any) => {
                         const uid = String(s.user_id);
                         const svc = {

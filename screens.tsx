@@ -86,6 +86,13 @@ const getSellerTierLabel = (rating: number): string => {
     return 'New Seller';
 };
 
+const isApprovedFlag = (value: any): boolean => value === true || value === 1 || value === '1';
+
+const buildDirectChatThreadId = (firstUserId: string, secondUserId: string): string => {
+    const [a, b] = [String(firstUserId), String(secondUserId)].sort();
+    return `dm_${a}_${b}`;
+};
+
 
 interface ScreenProps {
   setCurrentView: (view: any, tradeId?: string | null, userId?: string | null) => void;
@@ -301,17 +308,17 @@ const SellerProfile: React.FC<{
                                     <div className="flex-1">
                                         <div className="flex items-center gap-2 mb-1">
                                             <h3 className="font-bold text-white">{service.title}</h3>
-                                            {service.approved === true && (
+                                            {Boolean(service.approved) && (
                                                 <span className="px-2 py-1 text-xs rounded-full bg-green-500/20 text-green-300 border border-green-500/40">
                                                     Approved
                                                 </span>
                                             )}
-                                            {service.approved === false && service.rejected === false && (
+                                            {!Boolean(service.approved) && !Boolean(service.rejected) && (
                                                 <span className="px-2 py-1 text-xs rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/40">
                                                     Pending Review
                                                 </span>
                                             )}
-                                            {service.rejected === true && (
+                                            {Boolean(service.rejected) && (
                                                 <span className="px-2 py-1 text-xs rounded-full bg-red-500/20 text-red-300 border border-red-500/40">
                                                     Rejected
                                                 </span>
@@ -1249,10 +1256,14 @@ export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showT
     );
 };
 
-export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selectedTradeId, currentUser, showToast }) => {
+export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selectedTradeId, selectedUserId, currentUser, showToast }) => {
     const { trades, isLoading, addMessage, updateTradeStatus, loadMessages } = useTrades();
     const { addNotification } = useNotifications();
+    const { getUserById } = useUsers();
     const trade = trades.find(t => t.id === selectedTradeId);
+    const directChatPartner = useMemo(() => (selectedUserId ? getUserById(selectedUserId) || null : null), [selectedUserId, getUserById]);
+    const isDirectChat = !trade && !!directChatPartner && Boolean(selectedTradeId?.startsWith('dm_'));
+    const activeThreadId = trade?.id || selectedTradeId || '';
     const [message, setMessage] = useState('');
     const [modal, setModal] = useState<'approve' | 'decline' | 'deliver' | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -1277,19 +1288,22 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
     }, [setCurrentView]);
 
     useEffect(() => {
-        if (!trade) return;
-        setLiveMessages(trade.messages || []);
-    }, [trade?.id]);
+        if (trade) {
+            setLiveMessages(trade.messages || []);
+            return;
+        }
+        setLiveMessages([]);
+    }, [trade?.id, trade?.messages, activeThreadId]);
 
-    const otherParty = trade ? (trade.buyer.id === currentUser.id ? trade.seller : trade.buyer) : null;
+    const conversationPeer = trade ? (trade.buyer.id === currentUser.id ? trade.seller : trade.buyer) : directChatPartner;
 
     useEffect(() => {
-        if (!trade || !otherParty) return;
+        if (!activeThreadId || !conversationPeer) return;
         let mounted = true;
 
         const syncMessages = async () => {
-            const serverMessages = await loadMessages(trade.id);
-            if (!mounted || !serverMessages.length) return;
+            const serverMessages = await loadMessages(activeThreadId);
+            if (!mounted) return;
             setLiveMessages(serverMessages);
             if (seenIncomingRef.current.size === 0) {
                 serverMessages.forEach((msg) => seenIncomingRef.current.add(msg.id));
@@ -1299,7 +1313,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                 if (msg.senderId === currentUser.id || msg.senderId === 'system') continue;
                 if (seenIncomingRef.current.has(msg.id)) continue;
                 seenIncomingRef.current.add(msg.id);
-                addNotification(trade.id, `New message from ${otherParty.username}`);
+                addNotification(activeThreadId, `New message from ${conversationPeer.username}`);
             }
         };
 
@@ -1309,7 +1323,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
             mounted = false;
             clearInterval(timer);
         };
-    }, [trade?.id, otherParty?.id, currentUser.id, loadMessages, addNotification]);
+    }, [activeThreadId, conversationPeer?.id, currentUser.id, loadMessages, addNotification]);
 
     const filteredMessages = useMemo(() => {
         if (!searchQuery.trim()) return liveMessages;
@@ -1322,17 +1336,27 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [filteredMessages]);
 
-    const sendMessage = () => {
-        if (!message.trim() || !trade) return;
+    const sendMessage = async () => {
+        if (!message.trim() || !activeThreadId) return;
+        const messageText = message.trim();
         const newMessage: Message = {
             id: `m${Date.now()}`,
             senderId: currentUser.id,
             type: MessageType.TEXT,
-            content: message,
+            content: messageText,
             timestamp: new Date(),
         };
-        addMessage(trade.id, newMessage);
-        setLiveMessages(prev => [...prev, newMessage]);
+        const saved = await addMessage(activeThreadId, newMessage);
+        if (!saved) {
+            showToast('Message failed to send. Check connection and retry.');
+            return;
+        }
+        const refreshed = await loadMessages(activeThreadId);
+        if (refreshed.length) {
+            setLiveMessages(refreshed);
+        } else {
+            setLiveMessages(prev => [...prev, newMessage]);
+        }
         setMessage('');
         tg?.HapticFeedback.impactOccurred('light');
     };
@@ -1398,12 +1422,12 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
         );
     }
     
-    if (!trade) {
+    if (!trade && !isDirectChat) {
         return <div className="p-4 text-white">Trade not found. <button onClick={() => setCurrentView('home')}>Go Home</button></div>;
     }
 
-    const resolvedOtherParty = trade.buyer.id === currentUser.id ? trade.seller : trade.buyer;
-    const isBuyer = trade.buyer.id === currentUser.id;
+    const resolvedOtherParty = trade ? (trade.buyer.id === currentUser.id ? trade.seller : trade.buyer) : directChatPartner!;
+    const isBuyer = trade ? trade.buyer.id === currentUser.id : false;
 
     const hasBuyerReviewed = !!trade.buyerReview;
     const hasSellerReviewed = !!trade.sellerReview;
@@ -1474,11 +1498,11 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                             <Avatar src={resolvedOtherParty.avatarUrl} name={resolvedOtherParty.username} className="w-10 h-10" onClick={() => setCurrentView('userProfile', null, resolvedOtherParty.id)} />
                             <div>
                                 <p className="font-bold">{resolvedOtherParty.username}</p>
-                                <p className="text-xs text-text-body">${trade.amount.toFixed(2)} • pay via {trade.currency}</p>
+                                <p className="text-xs text-text-body">{trade ? `$${trade.amount.toFixed(2)} • pay via ${trade.currency}` : 'Direct chat'}</p>
                             </div>
                         </div>
                         <div className="flex items-center space-x-2">
-                             <StatusBadge status={trade.status} />
+                             {trade && <StatusBadge status={trade.status} />}
                              <button onClick={() => setIsSearching(true)} className="text-text-body p-2">
                                 <ICONS.search className="w-5 h-5" />
                              </button>
@@ -1488,7 +1512,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
             </div>
 
             {/* Delivery Status Display */}
-            {trade.status === EscrowStatus.HELD && (
+            {trade && trade.status === EscrowStatus.HELD && (
                 <div className="bg-blue-900/50 text-center p-3 text-blue-300">
                     <div className="flex items-center justify-center space-x-2">
                     <ICONS.clock className="w-4 h-4"/>
@@ -1497,7 +1521,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                 </div>
             )}
 
-            {trade.status === EscrowStatus.CREATED && (
+            {trade && trade.status === EscrowStatus.CREATED && (
                 <div className="bg-purple-900/50 p-3 text-purple-200 flex items-center justify-between gap-2">
                     <span className="text-sm">{isBuyer ? 'Trade created. You can pay anytime to activate escrow protection.' : 'Trade created. Waiting for buyer payment.'}</span>
                     {isBuyer && (
@@ -1508,14 +1532,14 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                 </div>
             )}
             
-            {trade.status === EscrowStatus.DELIVERED && isBuyer && (
+            {trade && trade.status === EscrowStatus.DELIVERED && isBuyer && (
                  <div className="bg-yellow-900/50 text-center p-3 text-warning flex items-center justify-center space-x-2">
                     <ICONS.check className="w-4 h-4"/>
                     <span>Work delivered! Please review and approve.</span>
                 </div>
             )}
             
-            {trade.status === EscrowStatus.DELIVERED && !isBuyer && (
+            {trade && trade.status === EscrowStatus.DELIVERED && !isBuyer && (
                  <div className="bg-green-900/50 text-center p-3 text-green-300 flex items-center justify-center space-x-2">
                     <ICONS.check className="w-4 h-4"/>
                     <span>Work delivered! Waiting for buyer approval.</span>
@@ -1556,7 +1580,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                 <div ref={messagesEndRef} />
             </div>
             
-            {trade.status === EscrowStatus.COMPLETED ? (
+            {trade && trade.status === EscrowStatus.COMPLETED ? (
                 <div className="p-4 border-t border-border-color bg-surface overflow-y-auto">
                     <h3 className="font-bold text-xl mb-4 text-center text-success flex items-center justify-center space-x-2">
                         <ICONS.check className="w-6 h-6"/>
@@ -1585,7 +1609,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
             ) : (
                 <div className="bg-surface p-3 mt-auto">
                      {/* Buyer Actions */}
-                     {isBuyer && trade.status === EscrowStatus.DELIVERED && (
+                     {trade && isBuyer && trade.status === EscrowStatus.DELIVERED && (
                         <div className="flex space-x-2 mb-2">
                             <button onClick={() => setModal('approve')} className="flex-1 bg-gradient-to-r from-green-500 to-success text-white font-bold py-3 rounded-2xl flex items-center justify-center space-x-2 shadow-glow-success">
                                 <ICONS.check className="w-5 h-5"/>
@@ -1599,7 +1623,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                     )}
                     
                     {/* Seller Actions */}
-                    {!isBuyer && trade.status === EscrowStatus.HELD && (
+                    {trade && !isBuyer && trade.status === EscrowStatus.HELD && (
                         <div className="flex space-x-2 mb-2">
                             <button onClick={() => setModal('deliver')} className="flex-1 bg-gradient-to-r from-blue-500 to-primary text-white font-bold py-3 rounded-2xl flex items-center justify-center space-x-2 shadow-glow-primary">
                                 <ICONS.send className="w-5 h-5"/>
@@ -1609,7 +1633,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                     )}
                     
                     {/* Cancel Trade Button for both parties */}
-                    {(trade.status === EscrowStatus.HELD || trade.status === EscrowStatus.IN_PROGRESS) && (
+                    {trade && (trade.status === EscrowStatus.HELD || trade.status === EscrowStatus.IN_PROGRESS) && (
                         <div className="flex justify-center mb-2">
                             <button 
                                 onClick={() => {
@@ -1637,7 +1661,7 @@ export const TradeRoomScreen: React.FC<ScreenProps> = ({ setCurrentView, selecte
                             </button>
                         </div>
                     )}
-                     {!isBuyer && (trade.status === EscrowStatus.HELD || trade.status === EscrowStatus.IN_PROGRESS) && (
+                     {trade && !isBuyer && (trade.status === EscrowStatus.HELD || trade.status === EscrowStatus.IN_PROGRESS) && (
                          <div className="mb-2">
                             <button onClick={() => setModal('deliver')} className="w-full bg-gradient-primary text-white font-bold py-3 rounded-2xl shadow-glow-primary">Mark as Delivered</button>
                          </div>
@@ -1794,8 +1818,8 @@ export const ExploreScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'setSe
             user.services ? user.services.map(service => ({ ...service, user })) : []
         ).filter(service => 
             service.user.id !== currentUser.id && 
-            service.approved === true && // Only show approved services to buyers
-            service.rejected !== true // Hide rejected services
+            Boolean(service.approved) && // Only show approved services to buyers
+            !Boolean(service.rejected) // Hide rejected services
         );
     }, [allUsers, currentUser.id]);
 
@@ -2619,6 +2643,13 @@ export const UserProfileScreen: React.FC<ScreenProps> = ({ setCurrentView, selec
         }
     }
 
+    const handleOpenDirectChat = () => {
+        if (!user) return;
+        const directThreadId = buildDirectChatThreadId(currentUser.id, user.id);
+        setSelectedUserId(user.id);
+        setCurrentView('tradeRoom', directThreadId, user.id);
+    };
+
     const handleStartTradeForService = (service: Service) => {
         if (user && handleStartTradeFromService) {
             handleStartTradeFromService(service, user.id);
@@ -2638,7 +2669,7 @@ export const UserProfileScreen: React.FC<ScreenProps> = ({ setCurrentView, selec
                 const json = await resp.json();
                 const list: any[] = Array.isArray(json.services) ? json.services : [];
                 const mapped: Service[] = list
-                    .filter(s => s.approved === true && s.rejected !== true) // Show only approved services
+                    .filter(s => isApprovedFlag(s.approved) && !isApprovedFlag(s.rejected)) // Show only approved services
                     .map(s => ({
                         id: String(s.id),
                         title: s.title,
@@ -2705,17 +2736,17 @@ export const UserProfileScreen: React.FC<ScreenProps> = ({ setCurrentView, selec
                                     <div className="flex-1">
                                         <div className="flex items-center gap-2 mb-1">
                                         <h3 className="font-bold text-white">{service.title}</h3>
-                                            {service.approved === true && (
+                                            {Boolean(service.approved) && (
                                                 <span className="px-2 py-1 text-xs rounded-full bg-green-500/20 text-green-300 border border-green-500/40">
                                                     Approved
                                                 </span>
                                             )}
-                                            {service.approved === false && service.rejected === false && (
+                                            {!Boolean(service.approved) && !Boolean(service.rejected) && (
                                                 <span className="px-2 py-1 text-xs rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/40">
                                                     Pending Review
                                                 </span>
                                             )}
-                                            {service.rejected === true && (
+                                            {Boolean(service.rejected) && (
                                                 <span className="px-2 py-1 text-xs rounded-full bg-red-500/20 text-red-300 border border-red-500/40">
                                                     Rejected
                                                 </span>
@@ -2725,7 +2756,7 @@ export const UserProfileScreen: React.FC<ScreenProps> = ({ setCurrentView, selec
                                     </div>
                                     <p className="font-bold text-primary whitespace-nowrap pl-4">{service.price} {service.currency}</p>
                                 </div>
-                                {service.approved === true ? (
+                                {Boolean(service.approved) ? (
                                     mode === 'buyer' ? (
                                 <button onClick={() => handleStartTradeForService(service)} className="w-full mt-4 bg-primary/20 text-primary font-bold py-2 rounded-lg text-sm border border-primary/50 hover:bg-primary/30">
                                     Start Trade for this Service
@@ -2770,7 +2801,10 @@ export const UserProfileScreen: React.FC<ScreenProps> = ({ setCurrentView, selec
             </div>
              {mode === 'buyer' && (
              <div className="p-4 bg-surface/80 backdrop-blur-lg border-t border-border-color">
-                <button onClick={handleStartTrade} className="w-full bg-gradient-primary text-white font-bold py-4 rounded-2xl shadow-glow-primary">Start Generic Trade with {user.username}</button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button onClick={handleOpenDirectChat} className="w-full bg-surface-alt text-white font-bold py-4 rounded-2xl border border-border-color">Message {user.username}</button>
+                    <button onClick={handleStartTrade} className="w-full bg-gradient-primary text-white font-bold py-4 rounded-2xl shadow-glow-primary">Start Generic Trade with {user.username}</button>
+                </div>
             </div>
             )}
         </div>
