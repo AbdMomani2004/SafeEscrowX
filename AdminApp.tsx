@@ -23,7 +23,7 @@ const ADMIN_EMAIL = 'admin@escrowx.com';
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'Admin2025@2026.Alol.Tekkie256';
 
 const SectionCard: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className = '' }) => (
-    <div className={`bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 shadow-lg ${className}`}>
+    <div className={`bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 md:p-6 shadow-lg ${className}`}>
         <h2 className="text-xl font-semibold mb-4 text-white flex items-center gap-2">
             {title}
         </h2>
@@ -372,33 +372,35 @@ const TradesTable: React.FC = () => {
                     </div>
                 ) : (
                     filtered.map(t => (
-                    <div key={t.id} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:bg-white/10 transition-all duration-200">
-                        <div className="flex items-start justify-between mb-4">
-                            <div className="flex items-center space-x-4">
+                    <div key={t.id} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 md:p-6 hover:bg-white/10 transition-all duration-200">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-4">
+                            <div className="flex items-start space-x-3 md:space-x-4 min-w-0">
                                 <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-3 rounded-xl">
                                     <CryptoIcon currency={t.currency as Currency} className="w-6 h-6 text-white"/>
                                 </div>
-                                <div>
-                                    <h3 className="font-semibold text-white text-lg">{t.description}</h3>
+                                <div className="min-w-0">
+                                    <h3 className="font-semibold text-white text-base md:text-lg break-words">{t.description}</h3>
                                     <p className="text-white/70 text-sm">{t.amount} {t.currency}</p>
-                                    <div className="flex items-center gap-4 mt-2 text-xs text-white/60">
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-xs text-white/60">
                                         <span>Buyer: <span className="text-white">{t.buyer.username}</span></span>
                                         <span>Seller: <span className="text-white">{t.seller.username}</span></span>
                                         <span>Created: {new Date(t.createdAt).toLocaleDateString()}</span>
-                            <span>Deposit: <span className={`${t.deposit_status === 'APPROVED' ? 'text-green-400' : t.deposit_status === 'REJECTED' ? 'text-red-400' : 'text-yellow-400'}`}>{t.deposit_status || 'PENDING'}</span></span>
+                                        <span>Deposit: <span className={`${t.deposit_status === 'APPROVED' ? 'text-green-400' : t.deposit_status === 'REJECTED' ? 'text-red-400' : 'text-yellow-400'}`}>{t.deposit_status || 'PENDING'}</span></span>
                                     </div>
                                 </div>
                             </div>
-                            <StatusBadge status={t.status} />
+                            <div className="self-start">
+                                <StatusBadge status={t.status} />
+                            </div>
                         </div>
                         
                         <div className="space-y-3">
-                        <div className="flex flex-wrap gap-2">
+                        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
                             {[EscrowStatus.HELD, EscrowStatus.IN_PROGRESS, EscrowStatus.DELIVERED, EscrowStatus.DISPUTE, EscrowStatus.COMPLETED, EscrowStatus.CANCELLED].map(s => (
                                 <button 
                                     key={s} 
                                     onClick={() => setStatus(t, s)} 
-                                    className={`px-4 py-2 text-sm rounded-lg border transition-all duration-200 ${
+                                    className={`px-3 py-2 text-sm rounded-lg border transition-all duration-200 min-h-[40px] touch-manipulation ${
                                         t.status === s 
                                             ? 'bg-blue-500/20 border-blue-500/50 text-blue-300' 
                                             : 'bg-white/5 border-white/20 text-white/70 hover:bg-white/10 hover:text-white'
@@ -411,16 +413,16 @@ const TradesTable: React.FC = () => {
                             
                             {/* Deposit Approval Controls */}
                             {(t.deposit_status === 'PENDING' || !t.deposit_status) && (
-                                <div className="flex gap-2">
+                                <div className="grid grid-cols-2 sm:flex gap-2">
                                     <button
                                         onClick={() => approveDeposit(t.id)}
-                                        className="px-4 py-2 text-sm rounded-lg bg-green-500/20 border border-green-500/50 text-green-300 hover:bg-green-500/30 transition-all duration-200"
+                                        className="px-4 py-2 text-sm rounded-lg bg-green-500/20 border border-green-500/50 text-green-300 hover:bg-green-500/30 transition-all duration-200 min-h-[42px] touch-manipulation"
                                     >
                                         Approve Deposit
                                     </button>
                                     <button
                                         onClick={() => rejectDeposit(t.id)}
-                                        className="px-4 py-2 text-sm rounded-lg bg-red-500/20 border border-red-500/50 text-red-300 hover:bg-red-500/30 transition-all duration-200"
+                                        className="px-4 py-2 text-sm rounded-lg bg-red-500/20 border border-red-500/50 text-red-300 hover:bg-red-500/30 transition-all duration-200 min-h-[42px] touch-manipulation"
                                     >
                                         Reject Deposit
                                     </button>
@@ -429,10 +431,10 @@ const TradesTable: React.FC = () => {
                             
                             {/* Delivery Management Controls */}
                             {t.status === 'HELD' && (
-                                <div className="flex gap-2">
+                                <div className="grid grid-cols-1 sm:flex gap-2">
                                     <button
                                         onClick={() => cancelTrade(t.id, 'admin', 'Cancelled by admin')}
-                                        className="px-4 py-2 text-sm rounded-lg bg-red-500/20 border border-red-500/50 text-red-300 hover:bg-red-500/30 transition-all duration-200"
+                                        className="px-4 py-2 text-sm rounded-lg bg-red-500/20 border border-red-500/50 text-red-300 hover:bg-red-500/30 transition-all duration-200 min-h-[42px] touch-manipulation"
                                     >
                                         Cancel Trade
                                     </button>
@@ -440,16 +442,16 @@ const TradesTable: React.FC = () => {
                             )}
                             
                             {t.status === 'DELIVERED' && (
-                                <div className="flex gap-2">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                     <button
                                         onClick={() => approveDelivery(t.id)}
-                                        className="px-4 py-2 text-sm rounded-lg bg-green-500/20 border border-green-500/50 text-green-300 hover:bg-green-500/30 transition-all duration-200"
+                                        className="px-4 py-2 text-sm rounded-lg bg-green-500/20 border border-green-500/50 text-green-300 hover:bg-green-500/30 transition-all duration-200 min-h-[42px] touch-manipulation"
                                     >
                                         Force Approve
                                     </button>
                                     <button
                                         onClick={() => requestRevision(t.id, 'Admin requested revision')}
-                                        className="px-4 py-2 text-sm rounded-lg bg-orange-500/20 border border-orange-500/50 text-orange-300 hover:bg-orange-500/30 transition-all duration-200"
+                                        className="px-4 py-2 text-sm rounded-lg bg-orange-500/20 border border-orange-500/50 text-orange-300 hover:bg-orange-500/30 transition-all duration-200 min-h-[42px] touch-manipulation"
                                     >
                                         Request Revision
                                     </button>
@@ -664,7 +666,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     ];
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex relative">
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex relative overflow-x-hidden">
             {!isDesktop && sidebarOpen && (
                 <button
                     onClick={() => setSidebarOpen(false)}
@@ -701,7 +703,10 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                         {menuItems.map((item) => (
                             <button
                                 key={item.id}
-                                onClick={() => setTab(item.id as any)}
+                                onClick={() => {
+                                    setTab(item.id as any);
+                                    if (!isDesktop) setSidebarOpen(false);
+                                }}
                                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
                                     tab === item.id
                                         ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg'
@@ -738,17 +743,17 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             {/* Main Content */}
             <div className="flex-1 flex flex-col w-full">
                 {/* Header */}
-                <header className="bg-white/5 backdrop-blur-sm border-b border-white/10 p-6">
+                <header className="bg-white/5 backdrop-blur-sm border-b border-white/10 p-4 md:p-6">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h2 className="text-2xl font-bold text-white capitalize">
+                            <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white capitalize">
                                 {tab === 'trades' ? 'Trade Management' : 
                                  tab === 'users' ? 'User Management' : 
                                  tab === 'services' ? 'Service Management' : 
                                  tab === 'disputes' ? 'Dispute Resolution' : 
                                  'Withdrawal Management'}
                             </h2>
-                            <p className="text-white/60 mt-1">
+                            <p className="text-white/60 mt-1 text-xs sm:text-sm">
                                 {tab === 'trades' ? 'Monitor and manage all escrow transactions' : 
                                  tab === 'users' ? 'Manage user accounts and verification status' : 
                                  tab === 'services' ? 'Approve and manage marketplace services' : 
@@ -767,7 +772,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                                 </svg>
                             </button>
                             
-                            <div className="flex items-center gap-2 text-white/60">
+                            <div className="hidden sm:flex items-center gap-2 text-white/60">
                                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
                                 <span className="text-sm">System Online</span>
                             </div>
@@ -776,7 +781,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 </header>
 
                 {/* Content */}
-                <main className="flex-1 p-6 overflow-auto">
+                <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-auto">
                     <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
                         <div className="flex items-center justify-between mb-2">
                             <h3 className="text-sm font-semibold text-white">Live Market Prices (USD)</h3>

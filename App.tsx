@@ -166,7 +166,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-dark font-sans flex flex-col">
+    <div className="min-h-[100dvh] bg-gradient-dark font-sans flex flex-col overflow-x-hidden">
       <Toast message={toastMessage} />
       {showHeader && (
         <Header title={getHeaderTitle()} onNavigate={navigateTo}>
@@ -177,7 +177,7 @@ const App: React.FC = () => {
             )}
         </Header>
       )}
-      <div className={`flex-grow ${showNav ? 'pb-24' : ''} ${!showHeader ? 'h-screen' : ''} overflow-y-auto`}>
+      <div className={`flex-grow ${showNav ? 'pb-[calc(6rem+env(safe-area-inset-bottom))]' : ''} ${!showHeader ? 'h-[100dvh]' : ''} overflow-y-auto`}>
         {renderView()}
       </div>
       {showNav && <BottomNav activeView={getActiveTab()} setActiveView={navigateTo} setCreatingNew={setCreatingNew} />}

@@ -79,7 +79,7 @@ const NotificationPanel: React.FC<{
   };
 
   return (
-    <div className="absolute top-16 right-0 w-80 bg-surface/95 rounded-2xl shadow-2xl border border-border-color z-50 animate-fade-in-down backdrop-blur-xl">
+    <div className="absolute top-16 right-0 w-[min(20rem,calc(100vw-1rem))] bg-surface/95 rounded-2xl shadow-2xl border border-border-color z-50 animate-fade-in-down backdrop-blur-xl">
         <div className="p-4 border-b border-border-color">
             <h3 className="font-bold text-white">Notifications</h3>
         </div>
@@ -116,7 +116,7 @@ export const Header: React.FC<{
          <div className="flex items-center space-x-2">
             {children}
             <div className="relative">
-                 <button onClick={() => setPanelOpen(!panelOpen)} className="bg-surface/85 border border-border-color/80 p-3 rounded-full hover:bg-surface-alt hover:border-primary/40 transition-all relative">
+                 <button onClick={() => setPanelOpen(!panelOpen)} className="bg-surface/85 border border-border-color/80 p-3 rounded-full hover:bg-surface-alt hover:border-primary/40 transition-all relative touch-manipulation">
                     <ICONS.bell className="w-6 h-6 text-text-body"/>
                     {unreadCount > 0 && (
                         <span className="absolute -top-1 -right-1 bg-danger text-white text-xs w-5 h-5 rounded-full flex items-center justify-center border-2 border-background animate-ping once">
@@ -151,13 +151,13 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeView, setActiveView,
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 h-24 bg-surface/65 backdrop-blur-2xl border-t border-border-color/80 shadow-[0_-16px_34px_rgba(0,0,0,0.35)]">
-      <div className="flex justify-around items-center h-full max-w-md mx-auto">
+    <div className="fixed bottom-0 left-0 right-0 h-24 pb-[max(env(safe-area-inset-bottom),0px)] bg-surface/65 backdrop-blur-2xl border-t border-border-color/80 shadow-[0_-16px_34px_rgba(0,0,0,0.35)]">
+      <div className="flex justify-around items-center h-full max-w-md mx-auto px-2">
         {navItems.slice(0, 2).map(item => (
           <NavItem key={item.view} item={item} isActive={activeView === item.view} onClick={() => setActiveView(item.view)} />
         ))}
         
-        <button onClick={handleCreateNew} className="bg-gradient-primary text-white rounded-full p-4 shadow-glow-primary hover:scale-105 hover:brightness-105 transition-all duration-300 transform -translate-y-6 border border-white/20">
+        <button onClick={handleCreateNew} className="bg-gradient-primary text-white rounded-full p-4 shadow-glow-primary hover:scale-105 hover:brightness-105 transition-all duration-300 transform -translate-y-6 border border-white/20 touch-manipulation">
           <ICONS.add className="w-8 h-8" />
         </button>
 
@@ -175,7 +175,7 @@ const NavItem: React.FC<{item: { view: View, icon: React.FC<any> }, isActive: bo
       onClick();
     }
     return (
-        <button onClick={handleClick} className={`flex flex-col items-center justify-center w-16 h-16 rounded-2xl transition-all duration-300 ${isActive ? 'bg-primary/20 border border-primary/40 shadow-[0_8px_20px_rgba(63,109,244,0.3)]' : 'hover:bg-surface-alt/70 border border-transparent'}`}>
+        <button onClick={handleClick} className={`flex flex-col items-center justify-center w-16 h-16 rounded-2xl transition-all duration-300 touch-manipulation ${isActive ? 'bg-primary/20 border border-primary/40 shadow-[0_8px_20px_rgba(63,109,244,0.3)]' : 'hover:bg-surface-alt/70 border border-transparent'}`}>
           <div className={`relative transition-all duration-300 ${isActive ? 'text-primary scale-105' : 'text-text-body'}`}>
             <item.icon className="w-7 h-7" />
             {isActive && <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-2 h-2 bg-primary rounded-full"></div>}
