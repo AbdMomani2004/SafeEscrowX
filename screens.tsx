@@ -593,6 +593,11 @@ export const HomeScreen: React.FC<ScreenProps> = ({ setCurrentView, currentUser 
     const { mode } = useMode();
     const isBuyerMode = mode === 'buyer';
     const [showDebug, setShowDebug] = useState(false);
+    const [homeRates, setHomeRates] = useState<Record<Currency, number>>({
+        [Currency.USDT]: 1,
+        [Currency.BTC]: 0,
+        [Currency.LTC]: 0
+    });
 
     const relevantTrades = isBuyerMode
       ? trades.filter(t => t.buyer.id === currentUser.id)
@@ -606,6 +611,35 @@ export const HomeScreen: React.FC<ScreenProps> = ({ setCurrentView, currentUser 
 
     const handleTradeClick = (tradeId: string) => {
         setCurrentView('tradeRoom', tradeId);
+    };
+
+    useEffect(() => {
+        let mounted = true;
+        const fetchRates = async () => {
+            try {
+                const resp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,litecoin,tether&vs_currencies=usd');
+                const json = await resp.json();
+                if (!mounted) return;
+                setHomeRates({
+                    [Currency.USDT]: Number(json?.tether?.usd) || 1,
+                    [Currency.BTC]: Number(json?.bitcoin?.usd) || 0,
+                    [Currency.LTC]: Number(json?.litecoin?.usd) || 0
+                });
+            } catch {}
+        };
+        fetchRates();
+        const timer = setInterval(fetchRates, 60000);
+        return () => {
+            mounted = false;
+            clearInterval(timer);
+        };
+    }, []);
+
+    const formatRate = (value: number) => {
+        if (!value) return '--';
+        if (value >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        if (value >= 1) return value.toFixed(2);
+        return value.toFixed(4);
     };
 
     return (
@@ -657,6 +691,21 @@ export const HomeScreen: React.FC<ScreenProps> = ({ setCurrentView, currentUser 
                 </div>
             </div>
 
+            <div className="bg-surface border border-border-color/80 rounded-2xl p-4 mb-8">
+                <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-sm font-semibold text-white">Live Prices (USD)</h2>
+                    <span className="text-xs text-text-body">1m refresh</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                    {Object.values(Currency).map((c) => (
+                        <div key={c} className="bg-background/50 border border-border-color/70 rounded-xl px-3 py-2">
+                            <p className="text-xs text-text-body">{c}</p>
+                            <p className="text-sm font-semibold text-white">${formatRate(homeRates[c])}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
              <div className="space-y-3">
                 <h2 className="text-xl font-bold mb-3">Recent {isBuyerMode ? 'Orders' : 'Sales'}</h2>
                 {relevantTrades.length > 0 ? relevantTrades.slice(0, 3).map(trade => (
@@ -693,6 +742,13 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
     const [deliveryTime, setDeliveryTime] = useState('');
     const [termsAgreed, setTermsAgreed] = useState(false);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [usdRates, setUsdRates] = useState<Record<Currency, number>>({
+        [Currency.USDT]: 1,
+        [Currency.BTC]: 0,
+        [Currency.LTC]: 0
+    });
+    const [ratesLoading, setRatesLoading] = useState(true);
+    const [ratesUpdatedAt, setRatesUpdatedAt] = useState<Date | null>(null);
 
     const handleAmountChange = (value: string) => {
         const normalized = value
@@ -735,6 +791,40 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
         return getDepositFee(baseAmount);
     }, [amount]);
     const total = useMemo(() => (parseFloat(amount) || 0) + fee, [amount, fee]);
+
+    useEffect(() => {
+        let mounted = true;
+        const fetchRates = async () => {
+            try {
+                const resp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,litecoin,tether&vs_currencies=usd');
+                const json = await resp.json();
+                if (!mounted) return;
+                setUsdRates({
+                    [Currency.USDT]: Number(json?.tether?.usd) || 1,
+                    [Currency.BTC]: Number(json?.bitcoin?.usd) || 0,
+                    [Currency.LTC]: Number(json?.litecoin?.usd) || 0
+                });
+                setRatesUpdatedAt(new Date());
+            } catch (error) {
+                // keep previous/initial values
+            } finally {
+                if (mounted) setRatesLoading(false);
+            }
+        };
+        fetchRates();
+        const timer = setInterval(fetchRates, 60000);
+        return () => {
+            mounted = false;
+            clearInterval(timer);
+        };
+    }, []);
+
+    const formatRate = (value: number) => {
+        if (!value) return '--';
+        if (value >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        if (value >= 1) return value.toFixed(2);
+        return value.toFixed(4);
+    };
 
     const handleCreate = () => {
         if (!description || !amount || !deliveryTime || !termsAgreed) {
@@ -860,6 +950,24 @@ export const CreateEscrowScreen: React.FC<ScreenProps> = ({ setCurrentView, setC
                                 </button>
                             ))}
                         </div>
+                    </div>
+                    <p className="text-xs text-text-body mt-2">
+                        Selected {currency} price: {ratesLoading ? 'Loading...' : `$${formatRate(usdRates[currency])}`}
+                    </p>
+                </div>
+
+                <div className="bg-surface border border-border-color/80 rounded-2xl p-4 shadow-[0_10px_24px_rgba(0,0,0,0.2)]">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-white">Live Market Prices (USD)</h3>
+                        <span className="text-xs text-text-body">{ratesUpdatedAt ? ratesUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                        {Object.values(Currency).map((c) => (
+                            <div key={c} className={`rounded-xl px-3 py-2 border ${currency === c ? 'border-primary/60 bg-primary/10' : 'border-border-color/70 bg-background/40'}`}>
+                                <p className="text-xs text-text-body">{c}</p>
+                                <p className="text-sm font-semibold text-white">${ratesLoading ? '...' : formatRate(usdRates[c])}</p>
+                            </div>
+                        ))}
                     </div>
                 </div>
                  <div>
@@ -1035,6 +1143,12 @@ export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showT
         [Currency.LTC]: 'LTC'
     };
     const address = addresses[trade.currency];
+    const formatRate = (value: number) => {
+        if (!value) return '--';
+        if (value >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        if (value >= 1) return value.toFixed(2);
+        return value.toFixed(4);
+    };
 
     return (
         <div className="p-4 text-white text-center flex flex-col h-full">
@@ -1045,6 +1159,17 @@ export const DepositScreen: React.FC<Pick<ScreenProps, 'setCurrentView' | 'showT
             <p className="text-xs text-text-body mb-6">
                 Fee: {trade.amount < 100 ? '$1 under $100' : '1% above $100'}
             </p>
+
+            <div className="bg-surface border border-border-color/80 rounded-2xl p-3 mb-4">
+                <div className="grid grid-cols-3 gap-2">
+                    {Object.values(Currency).map((c) => (
+                        <div key={c} className={`rounded-xl px-3 py-2 border ${trade.currency === c ? 'border-primary/60 bg-primary/10' : 'border-border-color/70 bg-background/40'}`}>
+                            <p className="text-xs text-text-body">{c}</p>
+                            <p className="text-sm font-semibold text-white">${formatRate(usdRates[c])}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
 
             <div className="bg-surface p-6 rounded-2xl flex flex-col items-center border border-border-color">
                 <div className="bg-white p-2 rounded-lg">

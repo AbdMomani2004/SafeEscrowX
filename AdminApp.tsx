@@ -582,6 +582,11 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     });
     const [services, setServices] = useState<any[]>([]);
     const [trades, setTrades] = useState<any[]>([]);
+    const [marketRates, setMarketRates] = useState<Record<Currency, number>>({
+        [Currency.USDT]: 1,
+        [Currency.BTC]: 0,
+        [Currency.LTC]: 0
+    });
     
     // Fetch services for pending count
     useEffect(() => {
@@ -601,6 +606,35 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             } catch {}
         })();
     }, []);
+
+    useEffect(() => {
+        let mounted = true;
+        const fetchRates = async () => {
+            try {
+                const resp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,litecoin,tether&vs_currencies=usd');
+                const json = await resp.json();
+                if (!mounted) return;
+                setMarketRates({
+                    [Currency.USDT]: Number(json?.tether?.usd) || 1,
+                    [Currency.BTC]: Number(json?.bitcoin?.usd) || 0,
+                    [Currency.LTC]: Number(json?.litecoin?.usd) || 0
+                });
+            } catch {}
+        };
+        fetchRates();
+        const timer = setInterval(fetchRates, 60000);
+        return () => {
+            mounted = false;
+            clearInterval(timer);
+        };
+    }, []);
+
+    const formatRate = (value: number) => {
+        if (!value) return '--';
+        if (value >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        if (value >= 1) return value.toFixed(2);
+        return value.toFixed(4);
+    };
 
     useEffect(() => {
         const handleResize = () => {
@@ -743,6 +777,20 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
                 {/* Content */}
                 <main className="flex-1 p-6 overflow-auto">
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-semibold text-white">Live Market Prices (USD)</h3>
+                            <span className="text-xs text-white/60">1m refresh</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            {Object.values(Currency).map((c) => (
+                                <div key={c} className="bg-slate-900/40 border border-white/10 rounded-lg px-3 py-2">
+                                    <p className="text-xs text-white/60">{c}</p>
+                                    <p className="text-sm font-semibold text-white">${formatRate(marketRates[c])}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                     <SectionCard title={`${tab === 'trades' ? 'All Trades' : tab === 'users' ? 'All Users' : tab==='services' ? 'All Services' : tab==='payouts' ? 'Withdrawal Requests' : 'Open Disputes'}`}>
                 {tab === 'trades' && <TradesTable />}
                 {tab === 'users' && <UsersTable />}
